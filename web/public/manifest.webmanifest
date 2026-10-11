@@ -1,0 +1,3 @@
+{ "name": "Duelul Numelor", "short_name": "Duelul", "start_url": "/", "display": "standalone",
+  "background_color": "#110f1d", "theme_color": "#110f1d", "lang": "ro",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }] }
