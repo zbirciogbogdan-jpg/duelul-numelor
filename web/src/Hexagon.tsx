@@ -9,7 +9,7 @@ const SHORT: Record<string, string> = {
 export function Hexagon({ stars, score, size = 320, labels = true, accent = "var(--gilt)" }: {
   stars: Traits; score: Traits; size?: number; labels?: boolean; accent?: string;
 }) {
-  const pad = labels ? 100 : 8;
+  const pad = labels ? 120 : 8;
   const W = 300 + pad * 2, c = W / 2, R = 150;
   const pt = (i: number, v: number) => {
     const a = (-90 + i * 60) * (Math.PI / 180);
@@ -18,8 +18,8 @@ export function Hexagon({ stars, score, size = 320, labels = true, accent = "var
   const poly = (vals: number[]) => vals.map((v, i) => pt(i, v).join(",")).join(" ");
   const sv = TRAITS.map(([k]) => stars[k]), cv = TRAITS.map(([k]) => score[k]);
   return (
-    <svg className="hex" viewBox={`0 0 ${W} ${W}`} width={size} height={size} role="img"
-      aria-label={TRAITS.map(([k, n]) => `${n} ${score[k]}%`).join(", ")}>
+    <svg className="hex" viewBox={`0 0 ${W} ${W}`} role="img"
+      aria-label={TRAITS.map(([k, n]) => `${n} ${score[k]}%`).join(", ")} style={{ maxWidth: size }}>
       {[25, 50, 75, 100].map((r) => (
         <polygon key={r} points={poly(Array(6).fill(r))} fill="none" stroke="var(--grid)" strokeWidth={r === 100 ? 1.4 : 1} />
       ))}
@@ -33,7 +33,7 @@ export function Hexagon({ stars, score, size = 320, labels = true, accent = "var
         return (
           <g key={k}>
             <text x={x} y={y - 4} textAnchor={anchor} className="hex-label">{SHORT[k]}</text>
-            <text x={x} y={y + 16} textAnchor={anchor} className="hex-value">{score[k]}%</text>
+            <text x={x} y={y + 24} textAnchor={anchor} className="hex-value">{score[k]}%</text>
           </g>
         );
       })}

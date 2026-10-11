@@ -95,9 +95,9 @@ input { font: 500 17px var(--body); color: var(--text); background: var(--ink); 
 .error { color: var(--bad); font-size: 15px; }
 
 /* Hexagon */
-.hex { max-width: 100%; height: auto; display: block; margin: 0 auto; overflow: visible; }
-.hex-label { fill: var(--muted); font: 500 15px var(--body); }
-.hex-value { fill: var(--text); font: 600 16px var(--mono); }
+.hex { width: 100%; height: auto; display: block; margin: 0 auto; overflow: visible; }
+.hex-label { fill: var(--muted); font: 500 23px var(--body); }
+.hex-value { fill: var(--text); font: 600 24px var(--mono); }
 .hex-fill { transition: all .6s cubic-bezier(.2,.8,.2,1); }
 .demo, .hex-wrap { margin: 0; display: grid; gap: 10px; justify-items: center; }
 figcaption { font-size: 13.5px; color: var(--muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; }

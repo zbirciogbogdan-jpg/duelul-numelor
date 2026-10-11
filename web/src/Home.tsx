@@ -16,7 +16,7 @@ export function Landing() {
         <p className="lead">Din nume și data nașterii afli cum „ar trebui” să fii. Apoi prietenii votează în dueluri de 6 întrebări și îți desenează hexagonul real.</p>
       </section>
       <figure className="demo">
-        <Hexagon stars={demo.stars} score={demo.score} size={300} />
+        <Hexagon stars={demo.stars} score={demo.score} size={420} />
         <figcaption><span className="key star" /> Ce zic stelele <span className="key friends" /> Ce zic prietenii <em>(exemplu)</em></figcaption>
       </figure>
       <LoginPanel title="Fă-ți hexagonul" />
@@ -54,7 +54,7 @@ export function Profile({ me, duels, onSignOut }: { me: PlayerView; duels: DuelS
       </section>
 
       <figure className="hex-wrap">
-        <Hexagon stars={p.stars} score={p.score} size={340} />
+        <Hexagon stars={p.stars} score={p.score} size={440} />
         <figcaption><span className="key star" /> Stelele <span className="key friends" /> Prietenii</figcaption>
       </figure>
 
