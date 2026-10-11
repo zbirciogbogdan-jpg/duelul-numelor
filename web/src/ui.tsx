@@ -42,6 +42,12 @@ export function LoginPanel({ title = "Intră în joc", note }: { title?: string;
     const { error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: back } });
     if (error) setErr("Login-ul cu Google nu e activ încă. Folosește emailul sau încearcă mai târziu.");
   }
+  async function testAccount() {
+    setErr(null); setBusy(true);
+    const { error } = await supabase.auth.signInAnonymously();
+    setBusy(false);
+    if (error) setErr("Conturile de test nu sunt pornite în Supabase (Allow anonymous sign-ins).");
+  }
   async function mail(e: React.FormEvent) {
     e.preventDefault(); setErr(null); setBusy(true);
     const { error } = await supabase.auth.signInWithOtp({ email: email.trim(), options: { emailRedirectTo: back } });
@@ -68,6 +74,10 @@ export function LoginPanel({ title = "Intră în joc", note }: { title?: string;
         </form>
       )}
       {err && <p className="error">{err}</p>}
+      <div className="test-box">
+        <button className="btn btn-ghost" type="button" disabled={busy} onClick={testAccount}>Intră cu un cont de test</button>
+        <p className="fine">Doar în faza de test. Fiecare fereastră incognito e alt om, ca să poți juca singur un duel întreg.</p>
+      </div>
       <p className="fine">Contul real ține jocul corect: fiecare om votează o singură dată, fără conturi false.</p>
     </section>
   );

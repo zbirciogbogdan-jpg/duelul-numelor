@@ -57,13 +57,21 @@ type Duel = {
 const PLAYER_COLS = "id,user_id,name,birthdate,level,xp,glory,wins,losses,shame_title,shame_until,points,seen,aura,device_hash,created_at";
 
 // ---------- identitate ----------
-async function authUser(req: Request): Promise<string | null> {
+// Conturile de test (anonime) merg doar cât timp setarea allow_test_accounts e pornită.
+async function testAccountsAllowed() {
+  const { data } = await db.from("app_settings").select("value").eq("key", "allow_test_accounts").maybeSingle();
+  return data?.value === true;
+}
+async function authUser(req: Request): Promise<{ id: string; test: boolean } | null> {
   const h = req.headers.get("authorization") ?? "";
   const jwt = h.startsWith("Bearer ") ? h.slice(7) : "";
   if (!jwt || jwt.startsWith("sb_")) return null;
   const { data, error } = await db.auth.getUser(jwt);
   if (error || !data.user) return null;
-  return data.user.id;
+  if (data.user.is_anonymous) {
+    if (!(await testAccountsAllowed())) throw new Fail("Conturile de test sunt oprite. Intră cu Google.", 403);
+  }
+  return { id: data.user.id, test: !!data.user.is_anonymous };
 }
 async function playerOfUser(userId: string | null): Promise<Player | null> {
   if (!userId) return null;
@@ -231,7 +239,8 @@ async function myDuels(me: Player) {
 // ---------- acțiuni ----------
 async function handle(req: Request, body: Record<string, unknown>) {
   const action = body.action;
-  const userId = await authUser(req);
+  const auth = await authUser(req);
+  const userId = auth?.id ?? null, isTestUser = auth?.test ?? false;
 
   if (action === "me") {
     requireUser(userId);
@@ -266,7 +275,7 @@ async function handle(req: Request, body: Record<string, unknown>) {
 
     const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim();
     const ipHash = ip ? await sha256(`dn|${ip}`) : null;
-    if (ipHash) {
+    if (ipHash && !isTestUser) {
       const since = new Date(Date.now() - 864e5).toISOString();
       const { count } = await db.from("players").select("id", { count: "exact", head: true }).eq("ip_hash", ipHash).gte("created_at", since);
       if ((count ?? 0) >= IP_SIGNUP_CAP) throw new Fail("Prea multe carduri noi din această rețea azi. Încearcă mâine.", 429);

@@ -283,3 +283,5 @@ figcaption { font-size: 14px; color: var(--muted); display: flex; align-items: c
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+.test-box { display: grid; gap: 8px; padding: 14px; border-radius: 18px; border: 1.5px dashed rgba(45, 225, 194, .45); background: rgba(45, 225, 194, .07); }
