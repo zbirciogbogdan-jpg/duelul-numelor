@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import type { Element } from "./engine.ts";
-import { call, legacyToken, supabase, type PlayerView } from "./api.ts";
+import { call, legacyToken, setSession, supabase, type PlayerView } from "./api.ts";
 
 export const EL_COLOR: Record<Element, string> = { "Foc": "var(--foc)", "Apă": "var(--apa)", "Aer": "var(--aer)", "Pământ": "var(--pamant)" };
 export const EL_HEX: Record<Element, string> = { "Foc": "#ff5a3d", "Apă": "#2db8ff", "Aer": "#b18cff", "Pământ": "#7ddc6a" };
@@ -42,11 +42,20 @@ export function LoginPanel({ title = "Intră în joc", note }: { title?: string;
     const { error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: back } });
     if (error) setErr("Login-ul cu Google nu e activ încă. Folosește emailul sau încearcă mai târziu.");
   }
+  // Cont de test: login anonim + card aleatoriu, fără formular.
   async function testAccount() {
     setErr(null); setBusy(true);
-    const { error } = await supabase.auth.signInAnonymously();
+    const { data, error } = await supabase.auth.signInAnonymously();
+    if (error || !data.session) { setBusy(false); setErr("Conturile de test nu sunt pornite în Supabase (Allow anonymous sign-ins)."); return; }
+    setSession(data.session);
+    const names = ["Andrei", "Ioana", "Maria", "Mihai", "Elena", "Vlad", "Ana", "Radu", "Bianca", "Cristi", "Diana", "Tudor", "Sorina", "Matei", "Larisa", "Paul"];
+    const name = names[Math.floor(Math.random() * names.length)];
+    const y = 1985 + Math.floor(Math.random() * 20), m = 1 + Math.floor(Math.random() * 12), d = 1 + Math.floor(Math.random() * 28);
+    try {
+      await call("register", { name, birthdate: `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`, age16: true });
+    } catch (e2) { setErr((e2 as Error).message); }
     setBusy(false);
-    if (error) setErr("Conturile de test nu sunt pornite în Supabase (Allow anonymous sign-ins).");
+    window.dispatchEvent(new Event("dn:reload"));
   }
   async function mail(e: React.FormEvent) {
     e.preventDefault(); setErr(null); setBusy(true);
@@ -76,7 +85,7 @@ export function LoginPanel({ title = "Intră în joc", note }: { title?: string;
       {err && <p className="error">{err}</p>}
       <div className="test-box">
         <button className="btn btn-ghost" type="button" disabled={busy} onClick={testAccount}>Intră cu un cont de test</button>
-        <p className="fine">Doar în faza de test. Fiecare fereastră incognito e alt om, ca să poți juca singur un duel întreg.</p>
+        <p className="fine">Doar în faza de test. Creează pe loc un om nou, cu nume și dată de naștere la întâmplare. Fiecare fereastră incognito e alt om.</p>
       </div>
       <p className="fine">Contul real ține jocul corect: fiecare om votează o singură dată, fără conturi false.</p>
     </section>

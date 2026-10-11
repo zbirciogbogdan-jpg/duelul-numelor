@@ -3,6 +3,7 @@ import { TRAITS, buildProfile, type TraitKey } from "./engine.ts";
 import { call, type DuelSummary, type DuelView, type PlayerView } from "./api.ts";
 import { Hexagon } from "./Hexagon.tsx";
 import { Chips, LoginPanel, navigate } from "./ui.tsx";
+import { DuelList } from "./Pages.tsx";
 
 // Pagina de start pentru cine nu e logat: un hexagon demonstrativ + login.
 export function Landing() {
@@ -95,23 +96,9 @@ export function Profile({ me, duels, onSignOut }: { me: PlayerView; duels: DuelS
       </section>
 
       <section>
-        <h3 className="h3">Duelurile tale</h3>
-        {duels.length === 0 ? (
-          <p className="muted">Niciun duel încă. Provoacă pe cineva și trimite-i linkul pe WhatsApp.</p>
-        ) : (
-          <ul className="list">
-            {duels.map((d) => (
-              <li key={d.code}>
-                <a href={`/d/${d.code}`} onClick={(e) => { e.preventDefault(); navigate(`/d/${d.code}`); }}>
-                  <span>{d.opponent ? `vs ${d.opponent}` : "Așteaptă adversar"}{d.legacy && <em className="muted"> · versiunea veche</em>}</span>
-                  {d.status === "done"
-                    ? <span className={`pill ${d.won ? "win" : "loss"}`}>{d.won ? "câștigat" : "pierdut"}</span>
-                    : <span className="pill live">{d.status === "open" ? "se votează" : "în așteptare"}</span>}
-                </a>
-              </li>
-            ))}
-          </ul>
-        )}
+        <h3 className="h3">Ultimele dueluri</h3>
+        <DuelList duels={duels.filter((d) => !d.legacy)} limit={3} />
+        {duels.filter((d) => !d.legacy).length > 3 && <a className="link" href="/dueluri" onClick={(e) => { e.preventDefault(); navigate("/dueluri"); }}>Vezi toate duelurile</a>}
       </section>
       <button className="link" onClick={onSignOut}>Ieși din cont</button>
     </div>
