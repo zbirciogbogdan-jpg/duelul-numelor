@@ -1,11 +1,12 @@
-import type { Klass, Stats, Element, Category, DuelResult } from "./engine.ts";
+import type { Klass, Traits, TraitKey, Element, Category, DuelResult, Medal } from "./engine.ts";
 
 const URL_API = "https://aqhgzdcfwzktmqaubrdf.supabase.co/functions/v1/api";
 const KEY = "sb_publishable_Awp1941uEs6RrTHeLWpdTA_2o8XHNTF";
 
 export interface CardView {
   name: string; destiny: number; klass: Klass; sign: { name: string; glyph: string; trait: string };
-  el: Element; legend: boolean; stats: Stats; forma: number; horoscope: string; reasons: string[]; moon: string;
+  el: Element; legend: boolean; stars: Traits; traits: Traits; points: Traits; aura: number;
+  medals: Record<TraitKey, Medal>; forma: number; horoscope: string; reasons: string[]; moon: string;
 }
 export interface PlayerView {
   id: string; name: string; level: number; xp: number; glory: number; wins: number; losses: number;
@@ -20,7 +21,7 @@ export interface DuelView {
   categories: Category[]; A: PlayerView; B: PlayerView | null; invitedOnly: boolean; role: "A" | "B" | null;
   myPowerRound: number | null; votes: { A: number; B: number }[]; voters: number; voterLimit: number;
   myVotes: ("A" | "B" | null)[];
-  result: (DuelResult & { gloryGain: number; gloryLoss: number; xpWin: number; xpLoss: number }) | null;
+  result: (DuelResult & { gloryGain: number; gloryLoss: number; xpWin: number; xpLoss: number; votesA: number; votesB: number }) | null;
 }
 
 const store = {

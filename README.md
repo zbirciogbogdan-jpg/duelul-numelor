@@ -17,4 +17,5 @@ aplicația vorbește doar cu funcția `api`.
 
 ## Faza de test
 - Duelistii pot încheia duelul oricând („Încheie acum”). Se scoate înainte de lansarea publică.
-- Puterile dau deocamdată un bonus de 15% în runda aleasă; efectele specifice fiecărei clase vin în versiunea următoare.
+- Cardul are 6 trăsături sociale: stelele dau valoarea de pornire, voturile primite în dueluri o urcă (nu scade niciodată). Aura socială = toate voturile primite.
+- Puterea: în runda aleasă, voturile valorează cu 15% mai mult.

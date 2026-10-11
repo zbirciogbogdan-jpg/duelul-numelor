@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { STAT_NAME } from "./engine.ts";
+import { TRAIT_NAME } from "./engine.ts";
 import { call, getToken, setToken, voterKey, type DuelView } from "./api.ts";
 import { Card, EL_COLOR, RegisterForm, copyText, navigate, useToast } from "./ui.tsx";
 import { shareResult } from "./share.ts";
@@ -70,11 +70,11 @@ export default function Duel({ code }: { code: string }) {
   const powerPicker = (label: string, current: number | null, onPick: (i: number) => void) => (
     <div className="panel">
       <h3>{label}</h3>
-      <p className="small muted" style={{ margin: 0 }}>Puterea dă un bonus de 15% în runda aleasă. Adversarul nu vede unde ai pus-o.</p>
+      <p className="small muted" style={{ margin: 0 }}>În runda aleasă, voturile tale valorează cu 15% mai mult. Adversarul nu vede unde ai pus-o.</p>
       <div className="power-pick">
         {d.categories.map((c, i) => (
           <button key={i} type="button" className={`btn-ghost ${current === i ? "picked" : ""}`} onClick={() => onPick(i)} aria-pressed={current === i}>
-            <span>Runda {i + 1}</span><span className="small">{STAT_NAME[c.stat]}</span>
+            <span>Runda {i + 1}</span><span className="small">{TRAIT_NAME[c.trait]}</span>
           </button>
         ))}
       </div>
@@ -98,12 +98,12 @@ export default function Duel({ code }: { code: string }) {
       {d.status === "pending" && d.role !== "A" && (
         <section className="panel">
           <h1>{A.name} te provoacă la duel</h1>
-          <p className="lead">Trei runde, trei întrebări. Contează cardul tău, forma de azi și voturile prietenilor.</p>
+          <p className="lead">Trei întrebări despre voi doi. Prietenii votează cine se potrivește mai bine, iar fiecare vot primit îți crește trăsăturile de pe card.</p>
         </section>
       )}
       {d.status === "open" && (
         <section className="panel">
-          <h2>{d.role ? "Duelul tău e în desfășurare" : `Votează: ${A.name} sau ${B!.name}?`}</h2>
+          <h2>{d.role ? "Duelul tău e în desfășurare" : `Cine se potrivește mai bine: ${A.name} sau ${B!.name}?`}</h2>
           <p className="muted" style={{ margin: 0 }}>
             Se închide în {left}, sau când votează {d.voterLimit} oameni. Au votat până acum: {d.voters}.
           </p>
@@ -125,7 +125,7 @@ export default function Duel({ code }: { code: string }) {
             <div className="big">{win.name} l-a învins pe {lose.name}, {r.score}.</div>
             <div className="muted">{lose.name} poartă 7 zile titlul „{r.shame}”.</div>
             {iWon !== null && (
-              <div className="small">{iWon ? `Ai câștigat +${r.gloryGain} Glorie și ${r.xpWin} XP.` : `Ai pierdut ${r.gloryLoss} Glorie și ai primit ${r.xpLoss} XP.`}</div>
+              <div className="small">{iWon ? `Ai câștigat +${r.gloryGain} Glorie și ${r.xpWin} XP.` : `Ai pierdut ${r.gloryLoss} Glorie și ai primit ${r.xpLoss} XP.`} Voturile primite ({d.role === "A" ? r.votesA : r.votesB}) s-au adăugat la trăsăturile și Aura ta.</div>
             )}
             <div className="row" style={{ marginTop: 6 }}>
               <button className="btn-main" onClick={async () => { try { const how = await shareResult(d); if (how === "downloaded") showToast("Imaginea a fost salvată"); } catch (e) { setErr((e as Error).message); } }}>Imaginea pentru Story</button>
@@ -175,7 +175,7 @@ export default function Duel({ code }: { code: string }) {
           const winName = rr ? (rr.win === "A" ? A.name : B?.name) : null;
           return (
             <article className="round" key={i}>
-              <div className="r-top"><span>Runda {i + 1} · {STAT_NAME[c.stat]}</span>{winName && <span>câștigă {winName}</span>}</div>
+              <div className="r-top"><span>Runda {i + 1} · {TRAIT_NAME[c.trait]}</span>{winName && <span>câștigă {winName}</span>}</div>
               <p className="r-q">{c.q}</p>
               {B && d.status !== "pending" && (
                 <div className="bar" style={{ ["--ca" as string]: colA, ["--cb" as string]: colB }} role="img"
@@ -200,9 +200,9 @@ export default function Duel({ code }: { code: string }) {
                 <>
                   <p className="r-why">{rr.why}</p>
                   <div className="r-math">
-                    <div>Card: {fmt(rr.cardA)} – {fmt(rr.cardB)} (din 50)</div>
-                    <div>Voturi: {rr.vA} – {rr.vB} → {fmt(rr.voteA)} – {fmt(rr.voteB)}</div>
-                    <div>Zarul de Noroc: {rr.dice >= 0 ? "+" : "−"}{fmt(Math.abs(rr.dice))} pentru {A.name}</div>
+                    <div>Voturi: {rr.vA} – {rr.vB} → {fmt(rr.voteA)} – {fmt(rr.voteB)} (din 85)</div>
+                    <div>Card ({TRAIT_NAME[rr.trait]}, cu Forma zilei): {fmt(rr.cardA)} – {fmt(rr.cardB)} (din 15)</div>
+                    <div>Zar: {rr.dice >= 0 ? "+" : "−"}{fmt(Math.abs(rr.dice))} pentru {A.name}</div>
                     {(rr.powA || rr.powB) && <div>Putere folosită: {[rr.powA ? A.name : "", rr.powB ? B?.name : ""].filter(Boolean).join(", ")}</div>}
                   </div>
                 </>

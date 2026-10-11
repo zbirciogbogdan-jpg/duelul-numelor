@@ -1,19 +1,20 @@
 // Duelul Numelor — motorul de calcul.
 // Același fișier rulează pe server (Edge Function, autoritativ) și în aplicație (afișare).
-// Fără dependențe externe.
+// Cardul are 6 trăsături sociale: stelele dau valoarea de pornire, voturile prietenilor o urcă (nu scade niciodată).
 
-export type StatKey = "farmec" | "noroc" | "haos" | "drama" | "smech" | "aura";
+export type TraitKey = "amuzant" | "incredere" | "istet" | "fermecator" | "curajos" | "suflet";
 export type Element = "Foc" | "Apă" | "Aer" | "Pământ";
-export type Stats = Record<StatKey, number>;
+export type Traits = Record<TraitKey, number>;
 
-export const STATS: [StatKey, string][] = [
-  ["farmec", "Farmec"], ["noroc", "Noroc"], ["haos", "Haos"],
-  ["drama", "Dramă"], ["smech", "Șmecherie"], ["aura", "Aură"],
+export const TRAITS: [TraitKey, string][] = [
+  ["amuzant", "Amuzant"], ["incredere", "De încredere"], ["istet", "Isteț"],
+  ["fermecator", "Fermecător"], ["curajos", "Curajos"], ["suflet", "Bun la suflet"],
 ];
-export const STAT_NAME: Record<StatKey, string> = Object.fromEntries(STATS) as Record<StatKey, string>;
+export const TRAIT_NAME: Record<TraitKey, string> = Object.fromEntries(TRAITS) as Record<TraitKey, string>;
+export const TRAIT_KEYS = TRAITS.map(([k]) => k);
+export const emptyPoints = (): Traits => ({ amuzant: 0, incredere: 0, istet: 0, fermecator: 0, curajos: 0, suflet: 0 });
 
 const LET: Record<string, number> = { a:1,b:2,c:3,d:4,e:5,f:6,g:7,h:8,i:9,j:1,k:2,l:3,m:4,n:5,o:6,p:7,q:8,r:9,s:1,t:2,u:3,v:4,w:5,x:6,y:7,z:8 };
-const VOW = new Set(["a", "e", "i", "o", "u", "y"]);
 
 export interface Sign { name: string; glyph: string; el: Element; m: number; d: number; trait: string; }
 export const SIGNS: Sign[] = [
@@ -30,62 +31,80 @@ export const SIGNS: Sign[] = [
   { name: "Scorpion", glyph: "♏︎", el: "Apă", m: 10, d: 23, trait: "Ține minte tot" },
   { name: "Săgetător", glyph: "♐︎", el: "Foc", m: 11, d: 22, trait: "Spune ce gândește" },
 ];
-export const BEATS: Record<Element, Element> = { "Apă": "Foc", "Foc": "Aer", "Aer": "Pământ", "Pământ": "Apă" };
-const BEAT_VERB: Record<Element, string> = { "Apă": "stinge", "Foc": "arde", "Aer": "spulberă", "Pământ": "absoarbe" };
 
 export interface Klass { name: string; power: string; effect: string; }
+const POWER_EFFECT = "voturile primite în runda aleasă valorează cu 15% mai mult";
 export const CLASSES: Record<number, Klass> = {
-  1: { name: "Șeful", power: "Eu știu mai bine", effect: "anulează un vot advers" },
-  2: { name: "Împăciuitorul", power: "Hai să nu ne certăm", effect: "poate cere remiză o dată" },
-  3: { name: "Vedeta", power: "Lumina reflectoarelor", effect: "voturile publicului contează mai mult" },
-  4: { name: "Catârul", power: "Nu și gata", effect: "imun la deochi și haos" },
-  5: { name: "Haoticul", power: "Vânt de schimbare", effect: "schimbă categoria unei runde" },
-  6: { name: "Mămica", power: "Ai mâncat ceva?", effect: "primește dublu din cadouri" },
-  7: { name: "Vraciul", power: "Am visat asta azi-noapte", effect: "vede voturile înainte de final" },
-  8: { name: "Șmecherul", power: "Pe sub mână", effect: "fură un cadou de la adversar" },
-  9: { name: "Bătrânul satului", power: "Am trăit destule", effect: "câștigă egalitățile" },
-  11: { name: "Clarvăzătorul", power: "Știam de ieri", effect: "vede voturile și anulează unul" },
-  22: { name: "Arhitectul destinului", power: "Totul face parte din plan", effect: "își alege categoria unei runde" },
-  33: { name: "Maestrul", power: "Pace vouă", effect: "anulează puterea adversarului" },
+  1: { name: "Șeful", power: "Eu știu mai bine", effect: POWER_EFFECT },
+  2: { name: "Împăciuitorul", power: "Hai să nu ne certăm", effect: POWER_EFFECT },
+  3: { name: "Vedeta", power: "Lumina reflectoarelor", effect: POWER_EFFECT },
+  4: { name: "Catârul", power: "Nu și gata", effect: POWER_EFFECT },
+  5: { name: "Haoticul", power: "Vânt de schimbare", effect: POWER_EFFECT },
+  6: { name: "Mămica", power: "Ai mâncat ceva?", effect: POWER_EFFECT },
+  7: { name: "Vraciul", power: "Am visat asta azi-noapte", effect: POWER_EFFECT },
+  8: { name: "Șmecherul", power: "Pe sub mână", effect: POWER_EFFECT },
+  9: { name: "Bătrânul satului", power: "Am trăit destule", effect: POWER_EFFECT },
+  11: { name: "Clarvăzătorul", power: "Știam de ieri", effect: POWER_EFFECT },
+  22: { name: "Arhitectul destinului", power: "Totul face parte din plan", effect: POWER_EFFECT },
+  33: { name: "Maestrul", power: "Pace vouă", effect: POWER_EFFECT },
 };
 
-export interface Category { q: string; stat: StatKey; }
+// Ce „prezic” stelele pentru fiecare trăsătură.
+const EL_BIAS: Record<Element, Partial<Traits>> = {
+  "Foc": { curajos: 15, amuzant: 8 },
+  "Apă": { suflet: 15, incredere: 5 },
+  "Aer": { istet: 12, amuzant: 10 },
+  "Pământ": { incredere: 15, istet: 5 },
+};
+const DESTINY_BIAS: Record<number, Partial<Traits>> = {
+  1: { curajos: 10 }, 2: { suflet: 10 }, 3: { amuzant: 12 }, 4: { incredere: 12 }, 5: { curajos: 6, amuzant: 6 },
+  6: { suflet: 12 }, 7: { istet: 12 }, 8: { fermecator: 10 }, 9: { suflet: 6, istet: 6 },
+  11: { istet: 10, fermecator: 8 }, 22: { incredere: 10, istet: 8 }, 33: { suflet: 10, fermecator: 8 },
+};
+
+export interface Category { q: string; trait: TraitKey; }
 export const CATEGORIES: Category[] = [
-  { q: "Cine ar fi dat afară primul de la o nuntă?", stat: "haos" },
-  { q: "Cine mănâncă tot din frigider și neagă?", stat: "smech" },
-  { q: "Cine plânge la filme și zice că e alergia?", stat: "drama" },
-  { q: "Cine câștigă la loz și pierde biletul?", stat: "noroc" },
-  { q: "Cine ar convinge un polițist să-l lase fără amendă?", stat: "farmec" },
-  { q: "Cine supraviețuiește o săptămână fără telefon?", stat: "aura" },
-  { q: "Cine ajunge ultimul la propria petrecere?", stat: "haos" },
-  { q: "Cine prinde cel mai bun loc în autobuz fără să ceară?", stat: "noroc" },
-  { q: "Cine face scandal la reducerile de Black Friday?", stat: "drama" },
-  { q: "Cine vinde castraveți grădinarului?", stat: "smech" },
-  { q: "Cine e primul invitat la cumetrie?", stat: "farmec" },
-  { q: "Cine nu se deoache nici dacă îl privește tot satul?", stat: "aura" },
-  { q: "Cine trimite mesaje vocale de 4 minute?", stat: "drama" },
-  { q: "Cine găsește parcare în centru vineri seara?", stat: "noroc" },
-  { q: "Cine dă vina pe Mercur retrograd pentru orice?", stat: "haos" },
-  { q: "Cine primește porția mai mare de la bunica?", stat: "farmec" },
-  { q: "Cine iese basma curată din orice ceartă de familie?", stat: "smech" },
-  { q: "Cine doarme liniștit în noaptea de Sf. Andrei?", stat: "aura" },
-  { q: "Cine se ceartă cu GPS-ul și pierde?", stat: "haos" },
-  { q: "Cine ar câștiga un concurs de manele fără să știe versurile?", stat: "farmec" },
-  { q: "Cine ar plânge primul la o nuntă străină?", stat: "drama" },
-  { q: "Cine găsește 50 de lei în geaca de anul trecut?", stat: "noroc" },
-  { q: "Cine negociază la piață până primește și pătrunjel gratis?", stat: "smech" },
-  { q: "Cine trece neatins pe lângă o pisică neagră?", stat: "aura" },
-  { q: "Cine pleacă la mare cu geaca de iarnă?", stat: "haos" },
-  { q: "Cine primește like de la fosta în 3 minute?", stat: "farmec" },
-  { q: "Cine face o poveste de 20 de minute dintr-o coadă la poștă?", stat: "drama" },
-  { q: "Cine nimerește singurul taxi liber pe ploaie?", stat: "noroc" },
-  { q: "Cine fură ultima sarma și dă vina pe câine?", stat: "smech" },
-  { q: "Cine rămâne calm când se ia curentul la meci?", stat: "aura" },
+  { q: "Cine te face să râzi chiar și când n-ar trebui?", trait: "amuzant" },
+  { q: "Cine ține petrecerea în viață până dimineață?", trait: "amuzant" },
+  { q: "Cine are cele mai bune povești de la nunți?", trait: "amuzant" },
+  { q: "Cine trimite cele mai bune meme-uri pe grup?", trait: "amuzant" },
+  { q: "Cine imită cel mai bine un profesor?", trait: "amuzant" },
+  { q: "Cine transformă o coadă la poștă într-o poveste de 20 de minute?", trait: "amuzant" },
+  { q: "Pe cine suni la 3 noaptea când ai o problemă?", trait: "incredere" },
+  { q: "Cui îi lași cheile de la casă când pleci în concediu?", trait: "incredere" },
+  { q: "Cine păstrează un secret până la capăt?", trait: "incredere" },
+  { q: "Cine vine primul când ai nevoie de ajutor la mutat?", trait: "incredere" },
+  { q: "Cine îți dă banii înapoi fără să-i ceri?", trait: "incredere" },
+  { q: "Cine ajunge la timp, chiar și la ora 6 dimineața?", trait: "incredere" },
+  { q: "Cine ar câștiga la „Vrei să fii milionar?”", trait: "istet" },
+  { q: "Cine repară orice cu un tutorial de pe YouTube?", trait: "istet" },
+  { q: "Cine găsește cea mai bună ofertă la orice?", trait: "istet" },
+  { q: "Cine iese basma curată din orice încurcătură?", trait: "istet" },
+  { q: "Cine dă cele mai bune sfaturi?", trait: "istet" },
+  { q: "Cine se descurcă singur într-o țară străină fără să știe limba?", trait: "istet" },
+  { q: "Cine primește porția mai mare de la bunica?", trait: "fermecator" },
+  { q: "Cine scapă fără amendă după ce vorbește cu polițistul?", trait: "fermecator" },
+  { q: "Cine își face prieteni noi în 5 minute, oriunde?", trait: "fermecator" },
+  { q: "Cine primește reducere la piață doar zâmbind?", trait: "fermecator" },
+  { q: "Pe cine ar plăcea imediat părinții tăi?", trait: "fermecator" },
+  { q: "Cine arată bine și în pozele făcute pe ascuns?", trait: "fermecator" },
+  { q: "Cine sare primul cu parașuta?", trait: "curajos" },
+  { q: "Cine îi spune șefului adevărul în față?", trait: "curajos" },
+  { q: "Cine gustă primul mâncarea necunoscută din vacanță?", trait: "curajos" },
+  { q: "Cine iese primul pe ringul de dans?", trait: "curajos" },
+  { q: "Cine prinde păianjenul din cameră?", trait: "curajos" },
+  { q: "Cine și-ar lăsa jobul ca să-și urmeze visul?", trait: "curajos" },
+  { q: "Cine împarte și ultima sarma?", trait: "suflet" },
+  { q: "Cine ține minte ziua de naștere a tuturor?", trait: "suflet" },
+  { q: "Cine adoptă orice câine găsit pe stradă?", trait: "suflet" },
+  { q: "Cine te ascultă fără să se uite la telefon?", trait: "suflet" },
+  { q: "Cine o sună cel mai des pe bunica?", trait: "suflet" },
+  { q: "Cine te vizitează când ești bolnav, cu supă?", trait: "suflet" },
 ];
 
 export const SHAME_TITLES = [
-  "Plânge la filme", "Fricosul de serviciu", "Mâncătorul de sarmale", "Regele scuzelor",
-  "Deocheatul săptămânii", "Campion la mesaje vocale", "Ultimul la petrecere", "Pierzătorul de bilete",
+  "Plânge la filme", "Ultimul la petrecere", "Regele scuzelor", "Mâncătorul de sarmale",
+  "Deocheatul săptămânii", "Campion la mesaje vocale", "Pierzătorul de bilete", "Doarme la nunți",
 ];
 
 const SIGN_LINE: Record<string, string> = {
@@ -140,7 +159,6 @@ export const capName = (s: string) => {
   return t ? t.charAt(0).toUpperCase() + t.slice(1).toLowerCase() : t;
 };
 
-// Data calendaristică din România (jocul trăiește pe ora României).
 export interface RoDate { y: number; m: number; d: number; wd: number; }
 export function roDate(at: Date): RoDate {
   const parts = new Intl.DateTimeFormat("en-GB", {
@@ -158,61 +176,73 @@ export function signOf(m: number, d: number): Sign {
   return s;
 }
 
-export interface Moon { name: string; delta: number; line: string; full: boolean; }
+export interface Moon { name: string; delta: number; line: string; }
 export function moonAt(at: Date): Moon {
   const syn = 29.530588853;
   const days = at.getTime() / 864e5 - 10962.76; // lună nouă de referință: 6 ian 2000, 18:14 UTC
   const a = ((days % syn) + syn) % syn;
-  if (a < 1.85 || a > 27.68) return { name: "Lună nouă", delta: -1, line: "Lună nouă: energie la minim, −1 la formă.", full: false };
-  if (a < 5.54) return { name: "Crai nou", delta: 1, line: "Crai nou: ce începi azi crește, +1 la formă.", full: false };
-  if (a < 9.23) return { name: "Primul pătrar", delta: 0, line: "Primul pătrar: zi echilibrată.", full: false };
-  if (a < 12.92) return { name: "Lună crescătoare", delta: 1, line: "Lună crescătoare: +1 la formă.", full: false };
-  if (a < 16.61) return { name: "Lună plină", delta: 0, line: "Lună plină: Haosul se dublează în toate duelurile.", full: true };
-  if (a < 20.3) return { name: "Lună descrescătoare", delta: 0, line: "Lună descrescătoare: bun moment de închis socoteli.", full: false };
-  if (a < 24.0) return { name: "Ultimul pătrar", delta: -1, line: "Ultimul pătrar: oboseală cosmică, −1 la formă.", full: false };
-  return { name: "Lună bătrână", delta: 0, line: "Lună bătrână: ziua potrivită pentru odihnă.", full: false };
+  if (a < 1.85 || a > 27.68) return { name: "Lună nouă", delta: -1, line: "Lună nouă: energie la minim, −1 la formă." };
+  if (a < 5.54) return { name: "Crai nou", delta: 1, line: "Crai nou: ce începi azi crește, +1 la formă." };
+  if (a < 9.23) return { name: "Primul pătrar", delta: 0, line: "Primul pătrar: zi echilibrată." };
+  if (a < 12.92) return { name: "Lună crescătoare", delta: 1, line: "Lună crescătoare: +1 la formă." };
+  if (a < 16.61) return { name: "Lună plină", delta: 1, line: "Lună plină: toată lumea e mai expresivă, +1 la formă." };
+  if (a < 20.3) return { name: "Lună descrescătoare", delta: 0, line: "Lună descrescătoare: bun moment de închis socoteli." };
+  if (a < 24.0) return { name: "Ultimul pătrar", delta: -1, line: "Ultimul pătrar: oboseală cosmică, −1 la formă." };
+  return { name: "Lună bătrână", delta: 0, line: "Lună bătrână: ziua potrivită pentru odihnă." };
 }
+
+// Valoarea afișată: pornește de la stele și urcă spre 100 cu fiecare vot primit. Nu scade niciodată.
+export const traitValue = (base: number, points: number) =>
+  Math.round(base + (100 - base) * (1 - Math.exp(-Math.max(0, points) / 60)));
+export type Medal = "bronz" | "argint" | "aur" | null;
+export const medalFor = (points: number): Medal => (points >= 150 ? "aur" : points >= 50 ? "argint" : points >= 10 ? "bronz" : null);
 
 // ---------- cardul ----------
 export interface Card {
   name: string; birthdate: string;
   destiny: number; klass: Klass; sign: Sign; el: Element; legend: boolean;
-  stats: Stats; forma: number; F: number; pday: number;
+  stars: Traits;   // ce prezic stelele (pornirea)
+  traits: Traits;  // valoarea curentă = stele + prieteni
+  points: Traits;  // voturi primite pe fiecare trăsătură
+  aura: number;    // Aura socială = toate voturile primite
+  forma: number; F: number; pday: number;
   horoscope: string; reasons: string[]; moon: Moon;
 }
 
-export function buildCard(rawName: string, birthdate: string, at: Date = new Date()): Card {
+export function buildCard(rawName: string, birthdate: string, at: Date = new Date(), points: Partial<Traits> = {}): Card {
   const name = capName(rawName) || "Anonim";
   const letters = stripName(name) || "anonim";
   const [, m, d] = birthdate.split("-").map(Number);
-  let sum = 0, vow = 0, con = 0;
-  for (const ch of letters) { const v = LET[ch] ?? 0; sum += v; if (VOW.has(ch)) vow += v; else con += v; }
+  let sum = 0;
+  for (const ch of letters) sum += LET[ch] ?? 0;
   const destiny = reduceNum(sum);
   const base = destiny > 9 ? reduceNum(destiny, false) : destiny;
   const sign = signOf(m, d);
   const el = sign.el;
   const legend = destiny === 11 || destiny === 22 || destiny === 33 || (m === 2 && d === 29);
-  const elHaos: Record<Element, number> = { "Foc": 34, "Aer": 30, "Apă": 25, "Pământ": 21 };
-  const stats: Stats = {
-    farmec: 20 + (sum * 7) % 26,
-    noroc: 20 + (d * 11 + m * 3) % 26,
-    haos: elHaos[el] + (sum % 10),
-    drama: 20 + (vow * 5 + 3) % 26,
-    smech: 20 + (con * 3 + 1) % 26,
-    aura: 20 + (m * 7 + destiny * 5) % 26 + (legend ? 5 : 0),
-  };
+
+  const stars = emptyPoints();
+  const pts = { ...emptyPoints(), ...points };
+  const traits = emptyPoints();
+  for (const k of TRAIT_KEYS) {
+    const spread = hashStr(`${letters}|${birthdate}|${k}`) % 11;
+    stars[k] = Math.min(legend ? 60 : 55, 20 + spread + (EL_BIAS[el][k] ?? 0) + (DESTINY_BIAS[destiny]?.[k] ?? 0));
+    traits[k] = traitValue(stars[k], pts[k]);
+  }
+  const aura = TRAIT_KEYS.reduce((a, k) => a + pts[k], 0);
+
   const today = roDate(at);
   const moon = moonAt(at);
   const pday = reduceNum(d + m + today.d + today.m + digits(today.y), false);
   const birthday = today.d === d && today.m === m;
   const forma = clamp(DAY_BASE[pday] + moon.delta + (birthday ? 10 : 0), 1, 10);
   const reasons = [DAY_LINE[pday], moon.line];
-  if (today.wd === 2) reasons.push("Marți: trei ceasuri rele ascunse în zi. Ai grijă la Noroc.");
+  if (today.wd === 2) reasons.push("Marți: trei ceasuri rele ascunse în zi. Nu provoca pe nimeni la nervi.");
   if (birthday) reasons.push("La mulți ani! Revoluția solară îți dă forma maximă.");
-  const F = 0.8 + ((forma - 1) * 0.4) / 9;
+  const F = 0.95 + ((forma - 1) * 0.1) / 9; // Forma zilei: ±5%
   return {
     name, birthdate, destiny, klass: CLASSES[destiny] ?? CLASSES[base], sign, el, legend,
-    stats, forma, F, pday, horoscope: SIGN_LINE[sign.name], reasons, moon,
+    stars, traits, points: pts, aura, forma, F, pday, horoscope: SIGN_LINE[sign.name], reasons, moon,
   };
 }
 
@@ -223,71 +253,60 @@ export function drawCategories(seed: number): Category[] {
   const out: Category[] = [];
   for (const c of pool) {
     if (out.length === 3) break;
-    if (out.some((o) => o.stat === c.stat)) continue; // trei statistici diferite
+    if (out.some((o) => o.trait === c.trait)) continue; // trei trăsături diferite
     out.push(c);
   }
   return out;
 }
 
 export interface RoundResult {
-  q: string; stat: StatKey;
-  cardA: number; cardB: number; vA: number; vB: number; voteA: number; voteB: number;
+  q: string; trait: TraitKey;
+  vA: number; vB: number; voteA: number; voteB: number; cardA: number; cardB: number;
   dice: number; totA: number; totB: number; win: "A" | "B"; powA: boolean; powB: boolean; why: string;
 }
 export interface DuelResult {
   rounds: RoundResult[]; winner: "A" | "B"; score: string; shame: string; formaA: number; formaB: number;
 }
 
+// Scorul unei runde (din 100): 85 din voturi, 15 din trăsătura cardului (cu Forma zilei), plus un zar mic de ±2.
 export function resolveDuel(opts: {
   A: Card; B: Card; categories: Category[]; powA: number; powB: number;
-  votes: { A: number; B: number }[]; seed: number; at: Date;
+  votes: { A: number; B: number }[]; seed: number;
 }): DuelResult {
   const { A, B, categories, powA, powB, votes, seed } = opts;
   const rnd = rngFrom(seed);
-  const moon = moonAt(opts.at);
-  const tuesday = roDate(opts.at).wd === 2;
   const rounds = categories.map((cat, i) => {
-    const side = (P: Card, O: Card, power: boolean) => {
-      let S = P.stats[cat.stat];
-      if (cat.stat === "haos" && moon.full) S *= 2;
-      const E = BEATS[P.el] === O.el ? 1.1 : BEATS[O.el] === P.el ? 0.9 : 1;
-      return S * P.F * E * (1 + (power ? 0.15 : 0));
-    };
-    const pA = side(A, B, powA === i), pB = side(B, A, powB === i);
-    const share = clamp(pA / (pA + pB), 0.38, 0.62);
-    const cardA = 50 * share, cardB = 50 - cardA;
     const vA = votes[i]?.A ?? 0, vB = votes[i]?.B ?? 0;
-    let voteA = vA + vB === 0 ? 25 : (vA * 50) / (vA + vB);
-    if (A.destiny === 3 && powA === i) voteA = clamp(voteA * 1.3, 0, 50);
-    if (B.destiny === 3 && powB === i) voteA = 50 - clamp((50 - voteA) * 1.3, 0, 50);
-    const voteB = 50 - voteA;
-    let dice = clamp(rnd() * 10 - 5 + (A.stats.noroc - B.stats.noroc) / 20, -5, 5);
-    if (tuesday && rnd() < 0.25) dice = clamp(dice * 1.5, -5, 5);
-    const totA = cardA + voteA + dice, totB = cardB + voteB;
-    const win: "A" | "B" = totA > totB ? "A" : totB > totA ? "B" : A.stats.drama >= B.stats.drama ? "A" : "B";
-    const r: RoundResult = { q: cat.q, stat: cat.stat, cardA, cardB, vA, vB, voteA, voteB, dice, totA, totB, win, powA: powA === i, powB: powB === i, why: "" };
-    r.why = explain(r, A, B, moon.full);
+    const wA = vA * (powA === i ? 1.15 : 1), wB = vB * (powB === i ? 1.15 : 1);
+    const voteA = wA + wB === 0 ? 42.5 : (85 * wA) / (wA + wB), voteB = 85 - voteA;
+    const tA = A.traits[cat.trait] * A.F, tB = B.traits[cat.trait] * B.F;
+    const cardA = (15 * tA) / (tA + tB), cardB = 15 - cardA;
+    const dice = rnd() * 4 - 2;
+    const totA = voteA + cardA + dice, totB = voteB + cardB;
+    const win: "A" | "B" = totA > totB ? "A" : totB > totA ? "B" : A.aura >= B.aura ? "A" : "B";
+    const r: RoundResult = {
+      q: cat.q, trait: cat.trait, vA, vB, voteA, voteB, cardA, cardB, dice, totA, totB, win,
+      powA: powA === i, powB: powB === i, why: "",
+    };
+    r.why = explain(r, A, B);
     return r;
   });
-  const wA = rounds.filter((r) => r.win === "A").length;
-  const winner: "A" | "B" = wA >= 2 ? "A" : "B";
-  const score = winner === "A" ? `${wA}-${3 - wA}` : `${3 - wA}-${wA}`;
+  const wonA = rounds.filter((r) => r.win === "A").length;
+  const winner: "A" | "B" = wonA >= 2 ? "A" : "B";
+  const score = winner === "A" ? `${wonA}-${3 - wonA}` : `${3 - wonA}-${wonA}`;
   return { rounds, winner, score, shame: SHAME_TITLES[Math.floor(rnd() * SHAME_TITLES.length)], formaA: A.forma, formaB: B.forma };
 }
 
-function explain(r: RoundResult, A: Card, B: Card, fullMoon: boolean): string {
+function explain(r: RoundResult, A: Card, B: Card): string {
   const W = r.win === "A" ? A : B, L = r.win === "A" ? B : A;
   const wv = r.win === "A" ? r.vA : r.vB, lv = r.win === "A" ? r.vB : r.vA;
-  const wc = r.win === "A" ? r.cardA : r.cardB;
-  const dw = r.win === "A" ? r.dice : -r.dice;
-  if (BEATS[W.el] === L.el && wc > 27) return `${W.name} a câștigat pentru că ${W.el} ${BEAT_VERB[W.el]} ${L.el}. Așa e scris în stele.`;
-  if (r.stat === "haos" && fullMoon) return `Lună plină, haos dublu. ${W.name} s-a simțit ca acasă, ${L.name} mai puțin.`;
-  if (wv - lv >= 3) return `${L.name} a pierdut la vot ${lv} la ${wv}. Prietenii au vorbit. Și au vorbit urât.`;
-  if (lv > wv) return `Publicul a ținut cu ${L.name}, dar cardul lui ${W.name} a fost mai tare. Nu e vina publicului. E puțin vina publicului.`;
-  if (dw > 1.5) return `Zarul norocului a ținut cu ${W.name}. ${L.name} spune că a fost aranjat.`;
-  if (L.forma <= 4) return `${L.name} a pierdut pentru că azi are forma ${L.forma}/10. Nu e vina lui. E puțin vina lui.`;
-  if (wv + lv === 0) return `Nimeni n-a votat, așa că au hotărât stelele: ${W.name} ia runda.`;
-  return `${W.name} a luat runda la ${STAT_NAME[r.stat]}. ${L.name} cere reluarea imaginilor.`;
+  const t = TRAIT_NAME[r.trait];
+  if (wv + lv === 0) return `Nimeni n-a votat, așa că au hotărât stelele: ${W.name} pare mai ${t.toLowerCase()} azi.`;
+  if (lv === 0) return `Unanimitate: ${wv} din ${wv} pentru ${W.name}. ${L.name} cere renumărarea.`;
+  if (wv - lv >= 2) return `${W.name} a luat ${wv} voturi, ${L.name} doar ${lv}. Prietenii au vorbit.`;
+  if (wv === lv) return `Egalitate la voturi. A decis cardul: ${W.name} are mai mult la ${t}.`;
+  if (wv < lv) return `${L.name} a avut mai multe voturi, dar cardul și puterea lui ${W.name} au întors runda.`;
+  return `La limită, ${wv} la ${lv}. ${L.name} spune că a fost aranjat.`;
 }
 
 // ---------- progres ----------

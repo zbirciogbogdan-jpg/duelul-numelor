@@ -92,9 +92,21 @@ button:disabled { opacity: .55; cursor: default; }
 .st { display: grid; grid-template-columns: 1fr auto; font-size: 11.5px; gap: 2px 6px; align-items: center; }
 .st span { color: var(--muted); }
 .st em { font-style: normal; font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums; }
-.st i { grid-column: 1 / -1; height: 4px; background: rgba(255,255,255,.08); border-radius: 2px; overflow: hidden; }
-.st i::after { content: ""; display: block; height: 100%; width: var(--v); background: linear-gradient(90deg, var(--gilt-soft), var(--gilt)); }
-.c-foot { padding: 6px 12px 10px; font-size: 11.5px; color: var(--muted); border-top: 1px solid rgba(255,255,255,.07); }
+.st i { grid-column: 1 / -1; height: 5px; background: rgba(255,255,255,.08); border-radius: 3px; overflow: hidden; position: relative; }
+.st i::before { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--v); background: var(--gilt); }
+.st i::after { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--s); background: var(--gilt-soft); }
+.st span { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.medal { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+.medal.bronz { background: #c98a52; } .medal.argint { background: #d6d9e3; } .medal.aur { background: #ffd56b; box-shadow: 0 0 6px #ffd56b; }
+.legend-row { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; color: var(--muted); align-items: center; }
+.legend-row i { display: inline-block; width: 14px; height: 5px; border-radius: 3px; vertical-align: middle; margin-right: 5px; }
+.compare { display: grid; gap: 8px; }
+.compare-row { display: grid; grid-template-columns: minmax(96px, auto) 1fr auto; gap: 10px; align-items: center; font-size: 14px; }
+.compare-row .track { height: 8px; border-radius: 4px; background: rgba(255,255,255,.08); position: relative; overflow: hidden; }
+.compare-row .track b { position: absolute; inset: 0 auto 0 0; background: var(--gilt); }
+.compare-row .track s { position: absolute; inset: 0 auto 0 0; background: var(--gilt-soft); text-decoration: none; }
+.compare-row em { font-style: normal; font-family: var(--mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.c-foot { padding: 6px 12px 10px; font-size: 11.5px; color: var(--muted); border-top: 1px solid rgba(255,255,255,.07); display: flex; justify-content: space-between; gap: 8px; }
 .c-foot b { color: var(--text); }
 @media (prefers-reduced-motion: reduce) { .card { transition: none; transform: none !important; } }
 

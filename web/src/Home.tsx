@@ -1,6 +1,35 @@
 import { useEffect, useState } from "react";
 import { call, getToken, setToken, type DuelSummary, type DuelView, type PlayerView } from "./api.ts";
 import { Card, Forma, RegisterForm, navigate } from "./ui.tsx";
+import { TRAITS } from "./engine.ts";
+import type { CardView } from "./api.ts";
+
+function StarsVsFriends({ c }: { c: CardView }) {
+  const top = [...TRAITS].sort((a, b) => c.points[b[0]] - c.points[a[0]])[0];
+  return (
+    <div className="panel">
+      <h3>Ce zic stelele și ce zic prietenii</h3>
+      <div className="legend-row">
+        <span><i style={{ background: "var(--gilt-soft)" }} />Stelele (de la început)</span>
+        <span><i style={{ background: "var(--gilt)" }} />Adăugat din voturile prietenilor</span>
+      </div>
+      <div className="compare">
+        {TRAITS.map(([k, label]) => (
+          <div className="compare-row" key={k}>
+            <span>{label}</span>
+            <div className="track" aria-hidden="true"><b style={{ width: `${c.traits[k]}%` }} /><s style={{ width: `${c.stars[k]}%` }} /></div>
+            <em>{c.stars[k]} → {c.traits[k]}</em>
+          </div>
+        ))}
+      </div>
+      <p className="small muted" style={{ margin: 0 }}>
+        {c.aura === 0
+          ? "Încă n-ai primit voturi. Provoacă un prieten și cere-le celorlalți să voteze: fiecare vot îți crește trăsătura întrebării."
+          : `Aura ta socială: ${c.aura} voturi primite. Prietenii te văd cel mai mult ${top[1].toLowerCase()}. Valorile doar cresc, nu scad niciodată.`}
+      </p>
+    </div>
+  );
+}
 
 export default function Home() {
   const [token, setTok] = useState(getToken());
@@ -20,8 +49,8 @@ export default function Home() {
     return (
       <div className="wrap">
         <section className="panel" style={{ padding: "24px 20px", gap: 16 }}>
-          <h1>Numele tău e un card. Ce putere are?</h1>
-          <p className="lead">Din prenume și data nașterii calculăm numărul destinului, zodia, elementul și puterea ta. Apoi îți provoci prietenii la dueluri amuzante, iar ei votează cine câștigă.</p>
+          <h1>Stelele zic una. Prietenii zic alta.</h1>
+          <p className="lead">Stelele îți dau un punct de plecare: din prenume și data nașterii calculăm zodia, numărul destinului și cât de amuzant, isteț sau curajos „ar trebui” să fii. Apoi prietenii votează în dueluri și arată cine ești de fapt.</p>
           <RegisterForm onDone={(t) => { setToken(t); setTok(t); }} />
         </section>
       </div>
@@ -59,6 +88,7 @@ export default function Home() {
             </div>
             {err && <p className="error">{err}</p>}
           </div>
+          <StarsVsFriends c={me.card} />
           <Forma c={me.card} />
         </div>
       </div>

@@ -4,8 +4,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import {
-  buildCard, drawCategories, resolveDuel, gloryDelta, applyXp, hashStr, capName, stripName,
-  type Card, type Category,
+  buildCard, drawCategories, resolveDuel, gloryDelta, applyXp, hashStr, capName, stripName, medalFor, TRAIT_KEYS,
+  type Card, type Category, type Traits,
 } from "./engine.ts";
 
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
@@ -41,6 +41,7 @@ function randomCode() {
 type Player = {
   id: string; name: string; birthdate: string; level: number; xp: number; glory: number;
   wins: number; losses: number; shame_title: string | null; shame_until: string | null;
+  points: Traits; aura: number;
 };
 type Duel = {
   id: string; code: string; challenger_id: string; opponent_id: string | null; categories: Category[];
@@ -48,7 +49,7 @@ type Duel = {
   created_at: string; accepted_at: string | null; deadline: string | null; result: unknown; winner_id: string | null;
   rematch_of: string | null;
 };
-const PLAYER_COLS = "id,name,birthdate,level,xp,glory,wins,losses,shame_title,shame_until";
+const PLAYER_COLS = "id,name,birthdate,level,xp,glory,wins,losses,shame_title,shame_until,points,aura";
 
 async function playerByToken(token: unknown, required = true): Promise<Player | null> {
   if (typeof token !== "string" || token.length < 32) {
@@ -74,7 +75,7 @@ async function duelByCode(code: unknown): Promise<Duel> {
 }
 
 function publicPlayer(p: Player, at: Date) {
-  const card = buildCard(p.name, p.birthdate, at);
+  const card = buildCard(p.name, p.birthdate, at, p.points);
   const shamed = p.shame_until && new Date(p.shame_until) > new Date() ? p.shame_title : null;
   return {
     id: p.id, name: p.name, level: p.level, xp: p.xp, glory: p.glory, wins: p.wins, losses: p.losses,
@@ -84,7 +85,9 @@ function publicPlayer(p: Player, at: Date) {
 function cardView(c: Card) {
   return {
     name: c.name, destiny: c.destiny, klass: c.klass, sign: { name: c.sign.name, glyph: c.sign.glyph, trait: c.sign.trait },
-    el: c.el, legend: c.legend, stats: c.stats, forma: c.forma, horoscope: c.horoscope, reasons: c.reasons, moon: c.moon.name,
+    el: c.el, legend: c.legend, stars: c.stars, traits: c.traits, points: c.points, aura: c.aura,
+    medals: Object.fromEntries(TRAIT_KEYS.map((k) => [k, medalFor(c.points[k])])),
+    forma: c.forma, horoscope: c.horoscope, reasons: c.reasons, moon: c.moon.name,
   };
 }
 
@@ -106,19 +109,29 @@ async function resolve(duel: Duel): Promise<Duel> {
   const ps = await playersById([duel.challenger_id, duel.opponent_id]);
   const pa = ps.get(duel.challenger_id)!, pb = ps.get(duel.opponent_id)!;
   const at = new Date(duel.accepted_at);
-  const A = buildCard(pa.name, pa.birthdate, at), B = buildCard(pb.name, pb.birthdate, at);
+  const A = buildCard(pa.name, pa.birthdate, at, pa.points), B = buildCard(pb.name, pb.birthdate, at, pb.points);
   const { counts } = await voteCounts(duel.id);
   const res = resolveDuel({
     A, B, categories: duel.categories,
     powA: duel.challenger_power_round ?? 0, powB: duel.opponent_power_round ?? 1,
-    votes: counts, seed: hashStr(duel.id), at,
+    votes: counts, seed: hashStr(duel.id),
   });
+  // Voturile primite devin puncte pe trăsătura întrebării. Punctele și Aura doar cresc.
+  const ptsA: Traits = { ...A.points }, ptsB: Traits = { ...B.points };
+  let gotA = 0, gotB = 0;
+  duel.categories.forEach((c, i) => {
+    if (!c.trait) return;
+    ptsA[c.trait] += counts[i].A; ptsB[c.trait] += counts[i].B;
+    gotA += counts[i].A; gotB += counts[i].B;
+  });
+  const award = new Map([[pa.id, { points: ptsA, aura: pa.aura + gotA }], [pb.id, { points: ptsB, aura: pb.aura + gotB }]]);
   const winner = res.winner === "A" ? pa : pb, loser = res.winner === "A" ? pb : pa;
   const { gain, loss } = gloryDelta(winner.glory, loser.glory);
   const isRematchWin = !!duel.rematch_of;
   const wx = applyXp(winner.level, winner.xp, isRematchWin ? 80 : 60);
   const lx = applyXp(loser.level, loser.xp, 25);
-  const result = { ...res, gloryGain: gain, gloryLoss: loss, xpWin: isRematchWin ? 80 : 60, xpLoss: 25 };
+  const result = { ...res, gloryGain: gain, gloryLoss: loss, xpWin: isRematchWin ? 80 : 60, xpLoss: 25, votesA: 0, votesB: 0 };
+  result.votesA = counts.reduce((a, c) => a + c.A, 0); result.votesB = counts.reduce((a, c) => a + c.B, 0);
 
   const { data: claimed, error } = await db.from("duels")
     .update({ status: "done", result, winner_id: winner.id })
@@ -129,10 +142,10 @@ async function resolve(duel: Duel): Promise<Duel> {
     return data as Duel;
   }
   const until = new Date(Date.now() + 7 * 864e5).toISOString();
-  await db.from("players").update({ wins: winner.wins + 1, glory: winner.glory + gain, level: wx.level, xp: wx.xp }).eq("id", winner.id);
+  await db.from("players").update({ wins: winner.wins + 1, glory: winner.glory + gain, level: wx.level, xp: wx.xp, ...award.get(winner.id) }).eq("id", winner.id);
   await db.from("players").update({
     losses: loser.losses + 1, glory: Math.max(0, loser.glory - loss), level: lx.level, xp: lx.xp,
-    shame_title: res.shame, shame_until: until,
+    shame_title: res.shame, shame_until: until, ...award.get(loser.id),
   }).eq("id", loser.id);
   return claimed as Duel;
 }

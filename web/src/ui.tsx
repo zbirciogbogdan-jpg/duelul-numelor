@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { STATS, type Element } from "./engine.ts";
+import { TRAITS, type Element } from "./engine.ts";
 import { call, type CardView, type PlayerView } from "./api.ts";
 
 export const EL_COLOR: Record<Element, string> = { "Foc": "var(--foc)", "Apă": "var(--apa)", "Aer": "var(--aer)", "Pământ": "var(--pamant)" };
@@ -42,11 +42,17 @@ export function Card({ p }: { p: PlayerView }) {
             <div className="c-class"><b>{c.klass.name}</b> · {c.sign.name} · {c.el}</div>
           </div>
           <div className="c-stats">
-            {STATS.map(([k, label]) => (
-              <div className="st" key={k}><span>{label}</span><em>{c.stats[k]}</em><i style={{ ["--v" as string]: `${c.stats[k]}%` }} /></div>
-            ))}
+            {TRAITS.map(([k, label]) => {
+              const star = c.stars[k], now = c.traits[k], medal = c.medals[k];
+              return (
+                <div className="st" key={k} title={`Stelele: ${star} · Prietenii: +${now - star} (${c.points[k]} voturi)`}>
+                  <span>{label}{medal && <b className={`medal ${medal}`} aria-label={`medalie de ${medal}`} />}</span><em>{now}</em>
+                  <i style={{ ["--s" as string]: `${star}%`, ["--v" as string]: `${now}%` }} />
+                </div>
+              );
+            })}
           </div>
-          <div className="c-foot">Trăsătura zodiei: <b>{c.sign.trait}</b></div>
+          <div className="c-foot"><span>Aura socială <b>{c.aura}</b></span><span>{c.sign.trait}</span></div>
         </div>
         <div className="c-num" title="Numărul destinului">{c.destiny}</div>
       </div>
