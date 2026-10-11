@@ -1,19 +1,25 @@
-// Duelul Numelor — API-ul jocului (o singură Edge Function).
-// Autentificare proprie: fiecare jucător are un token secret păstrat în telefon; în baza de date stă doar hash-ul lui.
-// Toate calculele de duel se fac aici, pe server.
+// Duelul Numelor — API-ul jocului (v3).
+// Conturi reale prin Supabase Auth (Google / email). Toate calculele se fac aici, pe server.
+// Protecții: vot doar cu cont și card, un vot pe întrebare, duelistii nu votează (nici de pe același telefon),
+// conturile noi votează cu greutate 0,5, limită de voturi pe zi, limită de conturi noi pe rețea,
+// Gloria se dă doar din duelurile cu minimum 3 votanți.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import {
-  buildCard, drawCategories, resolveDuel, gloryDelta, applyXp, hashStr, capName, stripName, medalFor, TRAIT_KEYS,
-  type Card, type Category, type Traits,
+  buildProfile, drawQuestions, resolveDuel, gloryDelta, applyXp, hashStr, capName, stripName, zeroTraits, TRAIT_KEYS,
+  type Profile, type Question, type Traits,
 } from "./engine.ts";
 
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
-  auth: { persistSession: false },
+  auth: { persistSession: false, autoRefreshToken: false },
 });
 
 const DUEL_HOURS = 24;
-const VOTER_LIMIT = 15; // duelul se închide singur când au votat atâția oameni toate rundele
+const VOTER_LIMIT = 15;        // duelul se închide singur la atâția votanți
+const RANKED_MIN_VOTERS = 3;   // Glorie doar de la atâția votanți în sus
+const DAILY_BALLOT_CAP = 300;  // voturi pe cont în 24 h
+const IP_SIGNUP_CAP = 5;       // conturi noi din aceeași rețea în 24 h
+const NEW_ACCOUNT_HOURS = 24;  // cont nou = vot cu greutate 0,5
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -28,7 +34,7 @@ async function sha256(s: string) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
   return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
-function randomHex(bytes = 32) {
+function randomHex(bytes = 16) {
   const a = new Uint8Array(bytes); crypto.getRandomValues(a);
   return Array.from(a).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
@@ -39,27 +45,40 @@ function randomCode() {
 }
 
 type Player = {
-  id: string; name: string; birthdate: string; level: number; xp: number; glory: number;
+  id: string; user_id: string | null; name: string; birthdate: string; level: number; xp: number; glory: number;
   wins: number; losses: number; shame_title: string | null; shame_until: string | null;
-  points: Traits; aura: number;
+  points: Traits; seen: Traits; aura: number; device_hash: string | null; created_at: string;
 };
 type Duel = {
-  id: string; code: string; challenger_id: string; opponent_id: string | null; categories: Category[];
-  challenger_power_round: number | null; opponent_power_round: number | null; status: "pending" | "open" | "done";
-  created_at: string; accepted_at: string | null; deadline: string | null; result: unknown; winner_id: string | null;
-  rematch_of: string | null;
+  id: string; code: string; challenger_id: string; opponent_id: string | null; categories: Question[];
+  status: "pending" | "open" | "done"; created_at: string; accepted_at: string | null; deadline: string | null;
+  result: unknown; winner_id: string | null; rematch_of: string | null; version: number;
 };
-const PLAYER_COLS = "id,name,birthdate,level,xp,glory,wins,losses,shame_title,shame_until,points,aura";
+const PLAYER_COLS = "id,user_id,name,birthdate,level,xp,glory,wins,losses,shame_title,shame_until,points,seen,aura,device_hash,created_at";
 
-async function playerByToken(token: unknown, required = true): Promise<Player | null> {
-  if (typeof token !== "string" || token.length < 32) {
-    if (required) throw new Fail("Nu ești înscris încă.", 401);
-    return null;
-  }
-  const { data, error } = await db.from("players").select(PLAYER_COLS).eq("token_hash", await sha256(token)).maybeSingle();
+// ---------- identitate ----------
+async function authUser(req: Request): Promise<string | null> {
+  const h = req.headers.get("authorization") ?? "";
+  const jwt = h.startsWith("Bearer ") ? h.slice(7) : "";
+  if (!jwt || jwt.startsWith("sb_")) return null;
+  const { data, error } = await db.auth.getUser(jwt);
+  if (error || !data.user) return null;
+  return data.user.id;
+}
+async function playerOfUser(userId: string | null): Promise<Player | null> {
+  if (!userId) return null;
+  const { data, error } = await db.from("players").select(PLAYER_COLS).eq("user_id", userId).maybeSingle();
   if (error) throw error;
-  if (!data && required) throw new Fail("Contul nu a fost găsit pe acest telefon.", 401);
   return data as Player | null;
+}
+function requireUser(userId: string | null) {
+  if (!userId) throw new Fail("Intră în cont ca să continui.", 401);
+  return userId;
+}
+async function requirePlayer(userId: string | null) {
+  const p = await playerOfUser(requireUser(userId));
+  if (!p) throw new Fail("Fă-ți mai întâi cardul.", 403);
+  return p;
 }
 async function playersById(ids: string[]) {
   const { data, error } = await db.from("players").select(PLAYER_COLS).in("id", ids);
@@ -74,140 +93,169 @@ async function duelByCode(code: unknown): Promise<Duel> {
   return data as Duel;
 }
 
+function profileOf(p: Player, at: Date): Profile {
+  return buildProfile(p.name, p.birthdate, at, p.points, p.seen);
+}
 function publicPlayer(p: Player, at: Date) {
-  const card = buildCard(p.name, p.birthdate, at, p.points);
+  const pr = profileOf(p, at);
   const shamed = p.shame_until && new Date(p.shame_until) > new Date() ? p.shame_title : null;
   return {
-    id: p.id, name: p.name, level: p.level, xp: p.xp, glory: p.glory, wins: p.wins, losses: p.losses,
-    shame: shamed, card: cardView(card),
-  };
-}
-function cardView(c: Card) {
-  return {
-    name: c.name, destiny: c.destiny, klass: c.klass, sign: { name: c.sign.name, glyph: c.sign.glyph, trait: c.sign.trait },
-    el: c.el, legend: c.legend, stars: c.stars, traits: c.traits, points: c.points, aura: c.aura,
-    medals: Object.fromEntries(TRAIT_KEYS.map((k) => [k, medalFor(c.points[k])])),
-    forma: c.forma, horoscope: c.horoscope, reasons: c.reasons, moon: c.moon.name,
+    id: p.id, name: pr.name, level: p.level, xp: p.xp, glory: p.glory, wins: p.wins, losses: p.losses, shame: shamed,
+    profile: {
+      klass: pr.klass, destiny: pr.destiny, sign: { name: pr.sign.name, glyph: pr.sign.glyph, trait: pr.sign.trait },
+      el: pr.el, legend: pr.legend, stars: pr.stars, score: pr.score,
+      votes: Object.fromEntries(TRAIT_KEYS.map((k) => [k, Math.round(pr.seen[k])])),
+      aura: pr.aura, forma: pr.forma, horoscope: pr.horoscope, moon: pr.moon,
+    },
   };
 }
 
-async function voteCounts(duelId: string) {
-  const { data, error } = await db.from("votes").select("round,pick,voter_hash").eq("duel_id", duelId);
+// ---------- voturi ----------
+type Tally = { counts: { A: number; B: number; n: number }[]; voters: number; mine: (string | null)[]; votedRounds: Set<number> };
+async function tally(duel: Duel, voterId: string | null): Promise<Tally> {
+  const { data, error } = await db.from("ballots").select("round,pick,weight,voter_id").eq("duel_id", duel.id);
   if (error) throw error;
-  const counts = [0, 1, 2].map(() => ({ A: 0, B: 0 }));
+  const counts = Array.from({ length: 6 }, () => ({ A: 0, B: 0, n: 0 }));
   const voters = new Set<string>();
-  for (const v of data as { round: number; pick: "A" | "B"; voter_hash: string }[]) {
-    counts[v.round][v.pick]++;
-    voters.add(v.voter_hash);
+  const mine: (string | null)[] = Array(6).fill(null);
+  for (const b of data as { round: number; pick: "A" | "B"; weight: number; voter_id: string }[]) {
+    counts[b.round][b.pick] += b.weight; counts[b.round].n++;
+    voters.add(b.voter_id);
+    if (voterId && b.voter_id === voterId) mine[b.round] = b.pick;
   }
-  return { counts, voters: voters.size, rows: data as { round: number; pick: "A" | "B"; voter_hash: string }[] };
+  const votedRounds = new Set(mine.map((m, i) => (m ? i : -1)).filter((i) => i >= 0));
+  return { counts, voters: voters.size, mine, votedRounds };
 }
 
-// Închide duelul și împarte recompensele. Doar o singură cerere reușește să-l marcheze „done”.
+// ---------- închiderea duelului ----------
 async function resolve(duel: Duel): Promise<Duel> {
-  if (duel.status !== "open" || !duel.opponent_id || !duel.accepted_at) return duel;
+  if (duel.status !== "open" || !duel.opponent_id || !duel.accepted_at || duel.version < 3) return duel;
   const ps = await playersById([duel.challenger_id, duel.opponent_id]);
   const pa = ps.get(duel.challenger_id)!, pb = ps.get(duel.opponent_id)!;
   const at = new Date(duel.accepted_at);
-  const A = buildCard(pa.name, pa.birthdate, at, pa.points), B = buildCard(pb.name, pb.birthdate, at, pb.points);
-  const { counts } = await voteCounts(duel.id);
-  const res = resolveDuel({
-    A, B, categories: duel.categories,
-    powA: -1, powB: -1, // puterile sunt scoase din joc deocamdată
-    votes: counts, seed: hashStr(duel.id),
+  const A = profileOf(pa, at), B = profileOf(pb, at);
+  const t = await tally(duel, null);
+  const res = resolveDuel({ A, B, questions: duel.categories, votes: t.counts, seed: hashStr(duel.id) });
+
+  // Statisticile pe trăsături: câte voturi ai primit și câte s-au dat în total la acea trăsătură.
+  const wonA = { ...zeroTraits(), ...pa.points }, seenA = { ...zeroTraits(), ...pa.seen };
+  const wonB = { ...zeroTraits(), ...pb.points }, seenB = { ...zeroTraits(), ...pb.seen };
+  duel.categories.forEach((q, i) => {
+    const c = t.counts[i];
+    wonA[q.trait] += c.A; seenA[q.trait] += c.A + c.B;
+    wonB[q.trait] += c.B; seenB[q.trait] += c.A + c.B;
   });
-  // Voturile primite devin puncte pe trăsătura întrebării. Punctele și Aura doar cresc.
-  const ptsA: Traits = { ...A.points }, ptsB: Traits = { ...B.points };
-  let gotA = 0, gotB = 0;
-  duel.categories.forEach((c, i) => {
-    if (!c.trait) return;
-    ptsA[c.trait] += counts[i].A; ptsB[c.trait] += counts[i].B;
-    gotA += counts[i].A; gotB += counts[i].B;
-  });
-  const award = new Map([[pa.id, { points: ptsA, aura: pa.aura + gotA }], [pb.id, { points: ptsB, aura: pb.aura + gotB }]]);
+  const sum = (x: Traits) => Math.round(TRAIT_KEYS.reduce((a, k) => a + x[k], 0));
+
+  const ranked = t.voters >= RANKED_MIN_VOTERS;
   const winner = res.winner === "A" ? pa : pb, loser = res.winner === "A" ? pb : pa;
-  const { gain, loss } = gloryDelta(winner.glory, loser.glory);
-  const isRematchWin = !!duel.rematch_of;
-  const wx = applyXp(winner.level, winner.xp, isRematchWin ? 80 : 60);
-  const lx = applyXp(loser.level, loser.xp, 25);
-  const result = { ...res, gloryGain: gain, gloryLoss: loss, xpWin: isRematchWin ? 80 : 60, xpLoss: 25, votesA: 0, votesB: 0 };
-  result.votesA = counts.reduce((a, c) => a + c.A, 0); result.votesB = counts.reduce((a, c) => a + c.B, 0);
+  const { gain, loss } = ranked ? gloryDelta(winner.glory, loser.glory) : { gain: 0, loss: 0 };
+  const xpWin = duel.rematch_of ? 80 : 60, xpLoss = 25;
+  const result = { ...res, ranked, voters: t.voters, gloryGain: gain, gloryLoss: loss, xpWin, xpLoss };
 
   const { data: claimed, error } = await db.from("duels")
     .update({ status: "done", result, winner_id: winner.id })
     .eq("id", duel.id).eq("status", "open").select("*").maybeSingle();
   if (error) throw error;
-  if (!claimed) { // altă cerere l-a închis între timp
+  if (!claimed) {
     const { data } = await db.from("duels").select("*").eq("id", duel.id).single();
     return data as Duel;
   }
-  const until = new Date(Date.now() + 7 * 864e5).toISOString();
-  await db.from("players").update({ wins: winner.wins + 1, glory: winner.glory + gain, level: wx.level, xp: wx.xp, ...award.get(winner.id) }).eq("id", winner.id);
+  const stats = new Map([
+    [pa.id, { points: wonA, seen: seenA, aura: sum(wonA) }],
+    [pb.id, { points: wonB, seen: seenB, aura: sum(wonB) }],
+  ]);
+  const wx = applyXp(winner.level, winner.xp, xpWin), lx = applyXp(loser.level, loser.xp, xpLoss);
+  await db.from("players").update({
+    wins: winner.wins + 1, glory: winner.glory + gain, level: wx.level, xp: wx.xp, ...stats.get(winner.id),
+  }).eq("id", winner.id);
   await db.from("players").update({
     losses: loser.losses + 1, glory: Math.max(0, loser.glory - loss), level: lx.level, xp: lx.xp,
-    shame_title: res.shame, shame_until: until, ...award.get(loser.id),
+    shame_title: res.shame, shame_until: new Date(Date.now() + 7 * 864e5).toISOString(), ...stats.get(loser.id),
   }).eq("id", loser.id);
   return claimed as Duel;
 }
 
 async function maybeResolve(duel: Duel): Promise<Duel> {
-  if (duel.status !== "open") return duel;
+  if (duel.status !== "open" || duel.version < 3) return duel;
   if (duel.deadline && new Date(duel.deadline) <= new Date()) return resolve(duel);
-  const { voters } = await voteCounts(duel.id);
-  if (voters >= VOTER_LIMIT) return resolve(duel);
+  const t = await tally(duel, null);
+  if (t.voters >= VOTER_LIMIT) return resolve(duel);
   return duel;
 }
 
-async function duelView(duel: Duel, me: Player | null, voterKey: unknown) {
+async function duelView(duel: Duel, me: Player | null) {
   duel = await maybeResolve(duel);
   const ids = [duel.challenger_id, ...(duel.opponent_id ? [duel.opponent_id] : [])];
   const ps = await playersById(ids);
   const at = duel.accepted_at ? new Date(duel.accepted_at) : new Date();
   const A = ps.get(duel.challenger_id)!;
-  const B = duel.opponent_id ? ps.get(duel.opponent_id)! : null;
+  const B = duel.opponent_id ? ps.get(duel.opponent_id) ?? null : null;
   const role = me ? (me.id === A.id ? "A" : B && me.id === B.id ? "B" : null) : null;
-  const vc = await voteCounts(duel.id);
-  let myVotes: (string | null)[] = [null, null, null];
-  if (typeof voterKey === "string" && voterKey.length >= 16) {
-    const vh = await sha256(voterKey);
-    for (const v of vc.rows) if (v.voter_hash === vh) myVotes[v.round] = v.pick;
-  }
-  if (role) myVotes = [null, null, null];
+  const base = {
+    code: duel.code, version: duel.version, status: duel.status, createdAt: duel.created_at, acceptedAt: duel.accepted_at,
+    deadline: duel.deadline, A: publicPlayer(A, at), B: B ? publicPlayer(B, at) : null, role,
+    invitedOnly: duel.status === "pending" && !!duel.opponent_id, voterLimit: VOTER_LIMIT, rankedMin: RANKED_MIN_VOTERS,
+  };
+  if (duel.version < 3) return { ...base, rounds: [], voters: 0, result: null, canVote: false };
+  const t = await tally(duel, me?.id ?? null);
+  // Ca să nu te iei după alții: votanții văd rezultatele unei întrebări abia după ce au votat la ea.
+  const showAll = duel.status === "done" || role !== null;
+  const rounds = duel.categories.map((q, i) => ({
+    id: q.id, q: q.q, trait: q.trait, mine: t.mine[i],
+    counts: showAll || t.votedRounds.has(i) ? { A: round1(t.counts[i].A), B: round1(t.counts[i].B), n: t.counts[i].n } : null,
+  }));
   return {
-    code: duel.code, status: duel.status, createdAt: duel.created_at, acceptedAt: duel.accepted_at, deadline: duel.deadline,
-    categories: duel.categories,
-    A: publicPlayer(A, at), B: B ? publicPlayer(B, at) : null,
-    invitedOnly: duel.status === "pending" && !!duel.opponent_id,
-    role,
-    myPowerRound: role === "A" ? duel.challenger_power_round : role === "B" ? duel.opponent_power_round : null,
-    votes: vc.counts, voters: vc.voters, voterLimit: VOTER_LIMIT, myVotes,
+    ...base, rounds, voters: t.voters, canVote: duel.status === "open" && !!me && role === null,
     result: duel.status === "done" ? duel.result : null,
   };
 }
+const round1 = (v: number) => Math.round(v * 10) / 10;
 
 async function myDuels(me: Player) {
-  const { data, error } = await db.from("duels").select("id,code,status,challenger_id,opponent_id,winner_id,created_at,deadline")
+  const { data, error } = await db.from("duels").select("code,status,challenger_id,opponent_id,winner_id,created_at,deadline,version")
     .or(`challenger_id.eq.${me.id},opponent_id.eq.${me.id}`).order("created_at", { ascending: false }).limit(20);
   if (error) throw error;
-  const rows = data as Pick<Duel, "id" | "code" | "status" | "challenger_id" | "opponent_id" | "winner_id" | "created_at" | "deadline">[];
+  const rows = data as Duel[];
   const ids = [...new Set(rows.flatMap((r) => [r.challenger_id, r.opponent_id]).filter(Boolean) as string[])];
-  const ps = ids.length ? await playersById(ids) : new Map();
+  const ps = ids.length ? await playersById(ids) : new Map<string, Player>();
   return rows.map((r) => {
     const otherId = r.challenger_id === me.id ? r.opponent_id : r.challenger_id;
     return {
-      code: r.code, status: r.status, createdAt: r.created_at, deadline: r.deadline,
-      mine: r.challenger_id === me.id, opponent: otherId ? ps.get(otherId)?.name ?? "?" : null,
-      won: r.status === "done" ? r.winner_id === me.id : null,
+      code: r.code, status: r.status, createdAt: r.created_at, deadline: r.deadline, legacy: r.version < 3,
+      opponent: otherId ? ps.get(otherId)?.name ?? "?" : null, won: r.status === "done" ? r.winner_id === me.id : null,
     };
   });
 }
 
-function validRound(r: unknown) { return r === 0 || r === 1 || r === 2; }
-
-async function handle(body: Record<string, unknown>) {
+// ---------- acțiuni ----------
+async function handle(req: Request, body: Record<string, unknown>) {
   const action = body.action;
+  const userId = await authUser(req);
+
+  if (action === "me") {
+    requireUser(userId);
+    const me = await playerOfUser(userId);
+    if (!me) return { me: null };
+    return { me: publicPlayer(me, new Date()), duels: await myDuels(me) };
+  }
 
   if (action === "register") {
+    const uid = requireUser(userId);
+    if (await playerOfUser(uid)) throw new Fail("Ai deja un card pe acest cont.");
+    if (body.age16 !== true) throw new Fail("Confirmă că ai cel puțin 16 ani.");
+    const deviceHash = typeof body.deviceId === "string" && body.deviceId.length >= 16 ? await sha256(body.deviceId) : null;
+
+    // Card făcut înainte de conturi pe acest telefon? Îl legăm de cont, cu tot cu istoric.
+    if (typeof body.legacyToken === "string" && body.legacyToken.length >= 32) {
+      const { data: old } = await db.from("players").select("id,user_id").eq("token_hash", await sha256(body.legacyToken)).maybeSingle();
+      if (old && !old.user_id) {
+        await db.from("players").update({ user_id: uid, device_hash: deviceHash }).eq("id", old.id);
+        const me = (await playerOfUser(uid))!;
+        return { me: publicPlayer(me, new Date()), linked: true };
+      }
+    }
+
     const name = capName(String(body.name ?? ""));
     const birthdate = String(body.birthdate ?? "");
     if (!name || name.length > 16 || stripName(name).length < 2) throw new Fail("Scrie un prenume de cel puțin 2 litere.");
@@ -215,95 +263,105 @@ async function handle(body: Record<string, unknown>) {
     const age = (Date.now() - Date.parse(birthdate)) / (365.25 * 864e5);
     if (age < 16) throw new Fail("Jocul e deocamdată doar pentru cei de peste 16 ani.");
     if (age > 100) throw new Fail("Data nașterii nu pare corectă.");
-    if (body.age16 !== true) throw new Fail("Confirmă că ai cel puțin 16 ani.");
-    const token = randomHex(32);
-    const { data, error } = await db.from("players").insert({ token_hash: await sha256(token), name, birthdate }).select(PLAYER_COLS).single();
-    if (error) throw error;
-    return { token, me: publicPlayer(data as Player, new Date()) };
-  }
 
-  if (action === "me") {
-    const me = (await playerByToken(body.token))!;
-    return { me: publicPlayer(me, new Date()), duels: await myDuels(me) };
+    const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim();
+    const ipHash = ip ? await sha256(`dn|${ip}`) : null;
+    if (ipHash) {
+      const since = new Date(Date.now() - 864e5).toISOString();
+      const { count } = await db.from("players").select("id", { count: "exact", head: true }).eq("ip_hash", ipHash).gte("created_at", since);
+      if ((count ?? 0) >= IP_SIGNUP_CAP) throw new Fail("Prea multe carduri noi din această rețea azi. Încearcă mâine.", 429);
+    }
+    const { data, error } = await db.from("players").insert({
+      user_id: uid, name, birthdate, device_hash: deviceHash, ip_hash: ipHash,
+    }).select(PLAYER_COLS).single();
+    if (error) throw error;
+    return { me: publicPlayer(data as Player, new Date()) };
   }
 
   if (action === "challenge") {
-    const me = (await playerByToken(body.token))!;
-    let opponentId: string | null = null;
-    let rematchOf: string | null = null;
+    const me = await requirePlayer(userId);
+    let opponentId: string | null = null, rematchOf: string | null = null;
+    const exclude = new Set<string>();
     if (typeof body.rematchOf === "string") {
       const prev = await duelByCode(body.rematchOf);
       if (prev.status !== "done") throw new Fail("Revanșa se cere după ce se termină duelul.");
       if (prev.challenger_id !== me.id && prev.opponent_id !== me.id) throw new Fail("Nu ai fost în duelul acesta.");
       opponentId = prev.challenger_id === me.id ? prev.opponent_id : prev.challenger_id;
       rematchOf = prev.id;
+      // Aceiași doi nu primesc aceleași întrebări de două ori.
+      const { data: past } = await db.from("duels").select("categories")
+        .or(`and(challenger_id.eq.${me.id},opponent_id.eq.${opponentId}),and(challenger_id.eq.${opponentId},opponent_id.eq.${me.id})`)
+        .eq("version", 3).limit(30);
+      for (const d of (past ?? []) as { categories: Question[] }[]) for (const q of d.categories) if (q.id) exclude.add(q.id);
     }
-    const seed = hashStr(randomHex(8));
-    const categories = drawCategories(seed);
+    const questions = drawQuestions(hashStr(randomHex(8)), exclude);
     for (let i = 0; i < 4; i++) {
       const { data, error } = await db.from("duels").insert({
-        code: randomCode(), challenger_id: me.id, opponent_id: opponentId, categories,
-        rematch_of: rematchOf,
+        code: randomCode(), challenger_id: me.id, opponent_id: opponentId, categories: questions, rematch_of: rematchOf, version: 3,
       }).select("*").single();
-      if (!error) return { duel: await duelView(data as Duel, me, null) };
+      if (!error) return { duel: await duelView(data as Duel, me) };
       if (!String(error.message).includes("duplicate")) throw error;
     }
     throw new Fail("Nu am putut crea duelul. Încearcă din nou.", 500);
   }
 
   if (action === "duel") {
-    const me = await playerByToken(body.token, false);
-    return { duel: await duelView(await duelByCode(body.code), me, body.voterKey) };
-  }
-
-  if (action === "setPower") {
-    const me = (await playerByToken(body.token))!;
-    const duel = await duelByCode(body.code);
-    if (!validRound(body.round)) throw new Fail("Alege runda 1, 2 sau 3.");
-    if (duel.challenger_id === me.id && duel.status === "pending") {
-      await db.from("duels").update({ challenger_power_round: body.round }).eq("id", duel.id);
-    } else throw new Fail("Puterea se alege înainte să înceapă duelul.");
-    return { duel: await duelView(await duelByCode(body.code), me, null) };
+    const me = await playerOfUser(userId);
+    return { duel: await duelView(await duelByCode(body.code), me) };
   }
 
   if (action === "accept") {
-    const me = (await playerByToken(body.token))!;
+    const me = await requirePlayer(userId);
     const duel = await duelByCode(body.code);
+    if (duel.version < 3) throw new Fail("Duelul acesta e din versiunea veche.");
     if (duel.status !== "pending") throw new Fail("Duelul a fost deja acceptat.");
     if (duel.challenger_id === me.id) throw new Fail("Nu te poți duela cu tine. Trimite linkul unui prieten.");
     if (duel.opponent_id && duel.opponent_id !== me.id) throw new Fail("Revanșa aceasta e pentru altcineva.");
     const now = new Date();
     const { data, error } = await db.from("duels").update({
-      opponent_id: me.id, status: "open",
-      accepted_at: now.toISOString(), deadline: new Date(now.getTime() + DUEL_HOURS * 3600e3).toISOString(),
+      opponent_id: me.id, status: "open", accepted_at: now.toISOString(),
+      deadline: new Date(now.getTime() + DUEL_HOURS * 3600e3).toISOString(),
     }).eq("id", duel.id).eq("status", "pending").select("*").maybeSingle();
     if (error) throw error;
     if (!data) throw new Fail("Duelul a fost deja acceptat.");
-    return { duel: await duelView(data as Duel, me, null) };
+    return { duel: await duelView(data as Duel, me) };
   }
 
   if (action === "vote") {
+    const me = await requirePlayer(userId);
     const duel = await duelByCode(body.code);
-    if (duel.status !== "open") throw new Fail("Votul e închis pentru acest duel.");
+    if (duel.version < 3 || duel.status !== "open") throw new Fail("Votul e închis pentru acest duel.");
     if (duel.deadline && new Date(duel.deadline) <= new Date()) throw new Fail("Votul s-a încheiat.");
-    const me = await playerByToken(body.token, false);
-    if (me && (me.id === duel.challenger_id || me.id === duel.opponent_id)) throw new Fail("Nu poți vota în propriul duel.");
-    if (!validRound(body.round) || (body.pick !== "A" && body.pick !== "B")) throw new Fail("Vot invalid.");
-    if (typeof body.voterKey !== "string" || body.voterKey.length < 16) throw new Fail("Vot invalid.");
-    const { error } = await db.from("votes").upsert({
-      duel_id: duel.id, round: body.round, voter_hash: await sha256(body.voterKey), pick: body.pick,
-    }, { onConflict: "duel_id,round,voter_hash" });
+    if (me.id === duel.challenger_id || me.id === duel.opponent_id) throw new Fail("Nu poți vota în propriul duel.");
+    const r = body.round;
+    if (typeof r !== "number" || !Number.isInteger(r) || r < 0 || r > 5) throw new Fail("Vot invalid.");
+    if (body.pick !== "A" && body.pick !== "B") throw new Fail("Vot invalid.");
+
+    // Același telefon cu unul dintre dueliști = nu poate vota.
+    if (typeof body.deviceId === "string" && body.deviceId.length >= 16) {
+      const dh = await sha256(body.deviceId);
+      const ps = await playersById([duel.challenger_id, duel.opponent_id!]);
+      if ([...ps.values()].some((p) => p.device_hash && p.device_hash === dh)) throw new Fail("De pe acest telefon nu se poate vota în duelul acesta.");
+      if (!me.device_hash) await db.from("players").update({ device_hash: dh }).eq("id", me.id);
+    }
+    const since = new Date(Date.now() - 864e5).toISOString();
+    const { count } = await db.from("ballots").select("id", { count: "exact", head: true }).eq("voter_id", me.id).gte("created_at", since);
+    if ((count ?? 0) >= DAILY_BALLOT_CAP) throw new Fail("Ai atins limita de voturi pe azi. Revino mâine.", 429);
+
+    const isNew = Date.now() - new Date(me.created_at).getTime() < NEW_ACCOUNT_HOURS * 3600e3 && me.wins + me.losses === 0;
+    const { error } = await db.from("ballots").upsert({
+      duel_id: duel.id, round: r, voter_id: me.id, pick: body.pick, weight: isNew ? 0.5 : 1,
+    }, { onConflict: "duel_id,round,voter_id" });
     if (error) throw error;
-    return { duel: await duelView(duel, me, body.voterKey) };
+    return { duel: await duelView(duel, me) };
   }
 
-  if (action === "end") {
-    const me = (await playerByToken(body.token))!;
+  if (action === "end") { // doar în faza de test
+    const me = await requirePlayer(userId);
     const duel = await duelByCode(body.code);
-    if (me.id !== duel.challenger_id && me.id !== duel.opponent_id) throw new Fail("Doar duelistii pot încheia duelul.");
+    if (me.id !== duel.challenger_id && me.id !== duel.opponent_id) throw new Fail("Doar dueliștii pot încheia duelul.");
     if (duel.status !== "open") throw new Fail("Duelul nu e deschis.");
-    const done = await resolve(duel);
-    return { duel: await duelView(done, me, null) };
+    return { duel: await duelView(await resolve(duel), me) };
   }
 
   throw new Fail("Acțiune necunoscută.");
@@ -314,7 +372,7 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "Folosește POST." }, 405);
   try {
     const body = await req.json().catch(() => ({}));
-    return json(await handle(body ?? {}));
+    return json(await handle(req, body ?? {}));
   } catch (e) {
     if (e instanceof Fail) return json({ error: e.msg }, e.code);
     console.error(e);

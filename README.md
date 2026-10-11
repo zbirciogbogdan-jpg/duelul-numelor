@@ -15,7 +15,17 @@ Root Directory: `web` · Framework: Vite · Build: `npm run build` · Output: `d
 Proiect: `aqhgzdcfwzktmqaubrdf` (Frankfurt). Tabele: `players`, `duels`, `votes`, cu RLS activ și fără acces direct din browser;
 aplicația vorbește doar cu funcția `api`.
 
+## Regulile (v3)
+- 6 trăsături: Amuzant, De încredere, Isteț, Fermecător, Curajos, Bun la suflet. Stelele dau o prezicere 35–65%.
+- Scor trăsătură = (voturi primite + 10 × stele) / (voturi totale + 10). Fără voturi = stelele; cu multe voturi = prietenii.
+- Aura socială = total voturi primite (doar crește).
+- Duel = 6 întrebări (câte una pe trăsătură) din 120; aceiași doi nu primesc aceleași întrebări. Câștigă cine ia mai multe întrebări.
+
+## Anti-trișat
+- Vot doar cu cont (Supabase Auth: Google sau link pe email) și card făcut.
+- Un vot pe cont pe întrebare; dueliștii nu votează, nici de pe telefonul lor.
+- Cont nou (sub 24 h, fără dueluri) = vot cu greutate 0,5. Max 300 de voturi pe zi; max 5 conturi noi pe zi din aceeași rețea.
+- Glorie doar din duelurile cu minimum 3 votanți.
+
 ## Faza de test
-- Duelistii pot încheia duelul oricând („Încheie acum”). Se scoate înainte de lansarea publică.
-- Cardul are 6 trăsături sociale: stelele dau valoarea de pornire, voturile primite în dueluri o urcă (nu scade niciodată). Aura socială = toate voturile primite.
-- Puterile sunt scoase deocamdată: duelul = 3 întrebări, câștigă cine ia mai multe voturi.
+- Dueliștii pot încheia duelul oricând („Încheie acum”). Se scoate înainte de lansarea publică.
