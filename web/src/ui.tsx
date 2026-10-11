@@ -67,7 +67,6 @@ export function Forma({ c, title = "Forma zilei" }: { c: CardView; title?: strin
       <div className="pips" aria-hidden="true">{Array.from({ length: 10 }, (_, i) => <i key={i} className={i < c.forma ? "on" : ""} />)}</div>
       <p style={{ margin: 0 }}>{c.horoscope}</p>
       <ul className="reasons">{c.reasons.map((r) => <li key={r}>{r}</li>)}</ul>
-      <p className="power small" style={{ margin: 0 }}>Puterea: <b>„{c.klass.power}”</b>, {c.klass.effect}.</p>
     </div>
   );
 }

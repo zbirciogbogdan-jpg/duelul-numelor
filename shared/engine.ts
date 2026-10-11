@@ -302,10 +302,11 @@ function explain(r: RoundResult, A: Card, B: Card): string {
   const wv = r.win === "A" ? r.vA : r.vB, lv = r.win === "A" ? r.vB : r.vA;
   const t = TRAIT_NAME[r.trait];
   if (wv + lv === 0) return `Nimeni n-a votat, așa că au hotărât stelele: ${W.name} pare mai ${t.toLowerCase()} azi.`;
+  if (lv === 0 && wv === 1) return `Un singur vot, pentru ${W.name}. A fost de ajuns.`;
   if (lv === 0) return `Unanimitate: ${wv} din ${wv} pentru ${W.name}. ${L.name} cere renumărarea.`;
   if (wv - lv >= 2) return `${W.name} a luat ${wv} voturi, ${L.name} doar ${lv}. Prietenii au vorbit.`;
   if (wv === lv) return `Egalitate la voturi. A decis cardul: ${W.name} are mai mult la ${t}.`;
-  if (wv < lv) return `${L.name} a avut mai multe voturi, dar cardul și puterea lui ${W.name} au întors runda.`;
+  if (wv < lv) return `${L.name} a avut mai multe voturi, dar stelele lui ${W.name} au întors runda.`;
   return `La limită, ${wv} la ${lv}. ${L.name} spune că a fost aranjat.`;
 }
 

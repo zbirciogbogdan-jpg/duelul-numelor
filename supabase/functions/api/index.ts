@@ -113,7 +113,7 @@ async function resolve(duel: Duel): Promise<Duel> {
   const { counts } = await voteCounts(duel.id);
   const res = resolveDuel({
     A, B, categories: duel.categories,
-    powA: duel.challenger_power_round ?? 0, powB: duel.opponent_power_round ?? 1,
+    powA: -1, powB: -1, // puterile sunt scoase din joc deocamdată
     votes: counts, seed: hashStr(duel.id),
   });
   // Voturile primite devin puncte pe trăsătura întrebării. Punctele și Aura doar cresc.
@@ -240,11 +240,10 @@ async function handle(body: Record<string, unknown>) {
     }
     const seed = hashStr(randomHex(8));
     const categories = drawCategories(seed);
-    const power = validRound(body.powerRound) ? body.powerRound as number : Math.floor(Math.random() * 3);
     for (let i = 0; i < 4; i++) {
       const { data, error } = await db.from("duels").insert({
         code: randomCode(), challenger_id: me.id, opponent_id: opponentId, categories,
-        challenger_power_round: power, rematch_of: rematchOf,
+        rematch_of: rematchOf,
       }).select("*").single();
       if (!error) return { duel: await duelView(data as Duel, me, null) };
       if (!String(error.message).includes("duplicate")) throw error;
@@ -273,10 +272,9 @@ async function handle(body: Record<string, unknown>) {
     if (duel.status !== "pending") throw new Fail("Duelul a fost deja acceptat.");
     if (duel.challenger_id === me.id) throw new Fail("Nu te poți duela cu tine. Trimite linkul unui prieten.");
     if (duel.opponent_id && duel.opponent_id !== me.id) throw new Fail("Revanșa aceasta e pentru altcineva.");
-    const power = validRound(body.powerRound) ? body.powerRound as number : Math.floor(Math.random() * 3);
     const now = new Date();
     const { data, error } = await db.from("duels").update({
-      opponent_id: me.id, opponent_power_round: power, status: "open",
+      opponent_id: me.id, status: "open",
       accepted_at: now.toISOString(), deadline: new Date(now.getTime() + DUEL_HOURS * 3600e3).toISOString(),
     }).eq("id", duel.id).eq("status", "pending").select("*").maybeSingle();
     if (error) throw error;

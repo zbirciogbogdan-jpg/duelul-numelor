@@ -18,4 +18,4 @@ aplicația vorbește doar cu funcția `api`.
 ## Faza de test
 - Duelistii pot încheia duelul oricând („Încheie acum”). Se scoate înainte de lansarea publică.
 - Cardul are 6 trăsături sociale: stelele dau valoarea de pornire, voturile primite în dueluri o urcă (nu scade niciodată). Aura socială = toate voturile primite.
-- Puterea: în runda aleasă, voturile valorează cu 15% mai mult.
+- Puterile sunt scoase deocamdată: duelul = 3 întrebări, câștigă cine ia mai multe voturi.

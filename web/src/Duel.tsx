@@ -19,7 +19,6 @@ export default function Duel({ code }: { code: string }) {
   const [d, setD] = useState<DuelView | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [power, setPower] = useState<number | null>(null);
   const [hasToken, setHasToken] = useState(!!getToken());
   const [toast, showToast] = useToast();
   const left = useCountdown(d?.deadline ?? null);
@@ -67,19 +66,6 @@ export default function Duel({ code }: { code: string }) {
   const colA = EL_COLOR[A.card.el], colB = B ? EL_COLOR[B.card.el] : "var(--line)";
   const wa = (t: string) => `https://wa.me/?text=${encodeURIComponent(`${t} ${link}`)}`;
 
-  const powerPicker = (label: string, current: number | null, onPick: (i: number) => void) => (
-    <div className="panel">
-      <h3>{label}</h3>
-      <p className="small muted" style={{ margin: 0 }}>În runda aleasă, voturile tale valorează cu 15% mai mult. Adversarul nu vede unde ai pus-o.</p>
-      <div className="power-pick">
-        {d.categories.map((c, i) => (
-          <button key={i} type="button" className={`btn-ghost ${current === i ? "picked" : ""}`} onClick={() => onPick(i)} aria-pressed={current === i}>
-            <span>Runda {i + 1}</span><span className="small">{TRAIT_NAME[c.trait]}</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
 
   return (
     <div className="wrap">
@@ -156,16 +142,15 @@ export default function Duel({ code }: { code: string }) {
           </section>
         ) : (
           <>
-            {powerPicker("Unde îți folosești puterea?", power, setPower)}
             <div className="row">
-              <button className="btn-main" disabled={busy} onClick={() => act("accept", { powerRound: power ?? undefined })}>Accept duelul</button>
+              <button className="btn-main" disabled={busy} onClick={() => act("accept")}>Accept duelul</button>
             </div>
           </>
         )
       )}
-      {d.status === "pending" && d.role === "A" && powerPicker("Unde îți folosești puterea?", d.myPowerRound, (i) => act("setPower", { round: i }))}
 
       {/* Rundele */}
+      <h3>{d.status === "pending" ? "Întrebările duelului" : d.status === "open" ? "Votează la fiecare întrebare" : "Cum au votat prietenii"}</h3>
       <section className="rounds" aria-label="Rundele">
         {d.categories.map((c, i) => {
           const v = d.votes[i];
@@ -203,7 +188,6 @@ export default function Duel({ code }: { code: string }) {
                     <div>Voturi: {rr.vA} – {rr.vB} → {fmt(rr.voteA)} – {fmt(rr.voteB)} (din 85)</div>
                     <div>Card ({TRAIT_NAME[rr.trait]}, cu Forma zilei): {fmt(rr.cardA)} – {fmt(rr.cardB)} (din 15)</div>
                     <div>Zar: {rr.dice >= 0 ? "+" : "−"}{fmt(Math.abs(rr.dice))} pentru {A.name}</div>
-                    {(rr.powA || rr.powB) && <div>Putere folosită: {[rr.powA ? A.name : "", rr.powB ? B?.name : ""].filter(Boolean).join(", ")}</div>}
                   </div>
                 </>
               )}
