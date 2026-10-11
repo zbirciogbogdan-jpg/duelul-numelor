@@ -2,7 +2,7 @@ import { useState } from "react";
 import { TRAITS, buildProfile, type TraitKey } from "./engine.ts";
 import { call, type DuelSummary, type DuelView, type PlayerView } from "./api.ts";
 import { Hexagon } from "./Hexagon.tsx";
-import { LoginPanel, navigate } from "./ui.tsx";
+import { Chips, LoginPanel, navigate } from "./ui.tsx";
 
 // Pagina de start pentru cine nu e logat: un hexagon demonstrativ + login.
 export function Landing() {
@@ -12,7 +12,7 @@ export function Landing() {
     <div className="page">
       <section className="hero">
         <p className="eyebrow">Joc pentru prieteni</p>
-        <h1>Stelele zic una.<br />Prietenii zic alta.</h1>
+        <h1>Stelele zic una.<span className="l2">Prietenii zic alta.</span></h1>
         <p className="lead">Din nume și data nașterii afli cum „ar trebui” să fii. Apoi prietenii votează în dueluri de 6 întrebări și îți desenează hexagonul real.</p>
       </section>
       <figure className="demo">
@@ -48,8 +48,9 @@ export function Profile({ me, duels, onSignOut }: { me: PlayerView; duels: DuelS
   return (
     <div className="page">
       <section className="id">
-        <p className="eyebrow">{p.legend ? "Card legendar · " : ""}{p.klass} · {p.sign.name} · {p.el}</p>
         <h1>{me.name}</h1>
+        <Chips items={[p.klass, `${p.sign.glyph} ${p.sign.name}`, `Element ${p.el}`]} />
+        {p.legend && <span className="chip gold">Card legendar</span>}
         {me.shame && <p className="shame">Titlu de 7 zile: „{me.shame}”</p>}
       </section>
 

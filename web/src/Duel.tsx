@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { TRAIT_NAME, hashStr } from "./engine.ts";
 import { call, deviceId, type DuelView, type PlayerView, type RoundView } from "./api.ts";
-import { Avatar, EL_COLOR, LoginPanel, Onboarding, copyText, navigate, useToast } from "./ui.tsx";
+import { Avatar, Burst, EL_COLOR, EL_HEX, LoginPanel, Onboarding, copyText, navigate, useToast } from "./ui.tsx";
 import { Hexagon } from "./Hexagon.tsx";
 import { shareResult } from "./share.ts";
 
@@ -32,11 +32,13 @@ function Bar({ d, r }: { d: DuelView; r: RoundView }) {
 
 function VoteFlow({ d, onVote, busy }: { d: DuelView; onVote: (round: number, pick: "A" | "B") => void; busy: boolean }) {
   const [skipped, setSkipped] = useState<Set<number>>(new Set());
+  const [burst, setBurst] = useState(0);
   const next = d.rounds.findIndex((r, i) => !r.mine && !skipped.has(i));
   const answered = d.rounds.filter((r) => r.mine).length;
   if (next === -1) {
     return (
       <section className="sheet done-voting">
+        <Burst key={burst} count={36} spread={220} />
         <h2>Gata, ai votat.</h2>
         <p className="muted">Ai răspuns la {answered} din 6 întrebări. Rezultatul final apare când se închide duelul.</p>
         {skipped.size > 0 && <button className="link" onClick={() => setSkipped(new Set())}>Revino la întrebările sărite</button>}
@@ -49,16 +51,17 @@ function VoteFlow({ d, onVote, busy }: { d: DuelView; onVote: (round: number, pi
   const order: ("A" | "B")[] = flip ? ["B", "A"] : ["A", "B"];
   return (
     <section className="vote" aria-live="polite">
+      {burst > 0 && <Burst key={burst} />}
       <div className="vote-top">
-        <span className="eyebrow">Întrebarea {next + 1} din 6 · {TRAIT_NAME[r.trait]}</span>
+        <span className="eyebrow">{TRAIT_NAME[r.trait]}, întrebarea {next + 1} din 6</span>
         <span className="dots">{d.rounds.map((x, i) => <i key={i} className={x.mine ? "on" : i === next ? "cur" : skipped.has(i) ? "skip" : ""} />)}</span>
       </div>
-      <h2 className="vote-q">{r.q}</h2>
-      <div className="vote-pick">
+      <h2 className="vote-q" key={r.id}>{r.q}</h2>
+      <div className="vote-pick" key={`p${r.id}`}>
         {order.map((side) => {
           const p = side === "A" ? d.A : d.B!;
           return (
-            <button key={side} className="pick" disabled={busy} onClick={() => onVote(next, side)} style={{ ["--el" as string]: EL_COLOR[p.profile.el] }}>
+            <button key={side} className="pick" disabled={busy} onClick={() => { setBurst((b) => b + 1); onVote(next, side); }} style={{ ["--el" as string]: EL_COLOR[p.profile.el] }}>
               <Avatar p={p} size={72} />
               <span className="pick-name">{p.name}</span>
             </button>
@@ -125,7 +128,7 @@ export default function Duel({ code, signedIn, me, onMe }: {
         <div className="side"><Avatar p={A} size={64} /><b>{A.name}</b><span className="muted small">{A.profile.klass}</span></div>
         <div className="vs">
           <span>VS</span>
-          <em className={`pill ${d.status === "done" ? "" : "live"}`}>{d.status === "pending" ? "așteaptă" : d.status === "open" ? `se votează · ${left}` : "terminat"}</em>
+          <em className={`pill ${d.status === "done" ? "" : "live"}`}>{d.status === "pending" ? "așteaptă" : d.status === "open" ? `se votează, încă ${left}` : "terminat"}</em>
         </div>
         <div className="side">
           {B ? <><Avatar p={B} size={64} /><b>{B.name}</b><span className="muted small">{B.profile.klass}</span></>
@@ -183,7 +186,8 @@ export default function Duel({ code, signedIn, me, onMe }: {
         const iWon = d.role ? d.role === r.winner : null;
         return (
           <section className="verdict">
-            <p className="eyebrow">Rezultat · {r.voters} {r.voters === 1 ? "votant" : "votanți"}</p>
+            <Burst count={44} spread={280} />
+            <p className="eyebrow">Au decis {r.voters} {r.voters === 1 ? "votant" : "votanți"}</p>
             <h2>{win.name} câștigă {r.score}</h2>
             <p className="muted">{lose.name} poartă 7 zile titlul „{r.shame}”.{r.decidedBy === "votes" ? " La egalitate de întrebări au decis voturile totale." : r.decidedBy === "stars" ? " Egalitate perfectă: au decis stelele." : ""}</p>
             {iWon !== null && (
@@ -223,8 +227,8 @@ export default function Duel({ code, signedIn, me, onMe }: {
 
       {d.status === "done" && B && (
         <section className="compare-hex">
-          <figure><Hexagon stars={A.profile.stars} score={A.profile.score} size={180} labels={false} accent={EL_COLOR[A.profile.el]} /><figcaption>{A.name}</figcaption></figure>
-          <figure><Hexagon stars={B.profile.stars} score={B.profile.score} size={180} labels={false} accent={EL_COLOR[B.profile.el]} /><figcaption>{B.name}</figcaption></figure>
+          <figure><Hexagon stars={A.profile.stars} score={A.profile.score} size={180} labels={false} tint={EL_HEX[A.profile.el]} /><figcaption>{A.name}</figcaption></figure>
+          <figure><Hexagon stars={B.profile.stars} score={B.profile.score} size={180} labels={false} tint={EL_HEX[B.profile.el]} /><figcaption>{B.name}</figcaption></figure>
         </section>
       )}
       {toast && <div className="toast" role="status">{toast}</div>}

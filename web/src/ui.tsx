@@ -3,7 +3,7 @@ import type { Element } from "./engine.ts";
 import { call, legacyToken, supabase, type PlayerView } from "./api.ts";
 
 export const EL_COLOR: Record<Element, string> = { "Foc": "var(--foc)", "Apă": "var(--apa)", "Aer": "var(--aer)", "Pământ": "var(--pamant)" };
-export const EL_HEX: Record<Element, string> = { "Foc": "#ff7b3f", "Apă": "#4cb0ff", "Aer": "#b9a7ff", "Pământ": "#8fc76b" };
+export const EL_HEX: Record<Element, string> = { "Foc": "#ff5a3d", "Apă": "#2db8ff", "Aer": "#b18cff", "Pământ": "#7ddc6a" };
 
 export function navigate(path: string) {
   history.pushState(null, "", path);
@@ -111,4 +111,28 @@ export function Onboarding({ onDone }: { onDone: (me: PlayerView) => void }) {
       </form>
     </section>
   );
+}
+
+// O explozie scurtă de „cusături” colorate, pentru momentele de confirmare (vot, rezultat).
+const BURST_COLORS = ["#ff3d8b", "#ffb627", "#2de1c2", "#b18cff", "#fff4e8"];
+export function Burst({ count = 22, spread = 160 }: { count?: number; spread?: number }) {
+  return (
+    <span className="burst" aria-hidden="true">
+      {Array.from({ length: count }, (_, i) => {
+        const a = (i / count) * Math.PI * 2 + (i % 3) * 0.2;
+        const d = spread * (0.55 + ((i * 37) % 45) / 100);
+        return (
+          <i key={i} style={{
+            ["--x" as string]: `${Math.cos(a) * d}px`, ["--y" as string]: `${Math.sin(a) * d}px`,
+            ["--r" as string]: `${(i * 47) % 180}deg`, background: BURST_COLORS[i % BURST_COLORS.length],
+            animationDelay: `${(i % 4) * 25}ms`,
+          }} />
+        );
+      })}
+    </span>
+  );
+}
+
+export function Chips({ items }: { items: (string | false | null | undefined)[] }) {
+  return <div className="chips">{items.filter(Boolean).map((t) => <span key={t as string} className="chip">{t}</span>)}</div>;
 }

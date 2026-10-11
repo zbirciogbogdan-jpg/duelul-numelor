@@ -13,41 +13,41 @@ export async function resultImage(d: DuelView): Promise<Blob> {
   const win = r.winner === "A" ? A : B, lose = r.winner === "A" ? B : A;
 
   const bg = g.createLinearGradient(0, 0, 0, H);
-  bg.addColorStop(0, "#1d1838"); bg.addColorStop(1, "#0d0b18");
+  bg.addColorStop(0, "#3a1257"); bg.addColorStop(0.55, "#1a0b2e"); bg.addColorStop(1, "#0f0620");
   g.fillStyle = bg; g.fillRect(0, 0, W, H);
   g.textAlign = "center";
 
-  g.fillStyle = "#d9b45a"; g.font = "600 44px 'Marcellus SC', Georgia, serif";
+  g.fillStyle = "#ffb627"; g.font = "800 44px 'Unbounded', sans-serif";
   g.fillText("DUELUL NUMELOR", W / 2, 150);
 
-  g.fillStyle = "#f3eee2"; g.font = "88px 'Marcellus', Georgia, serif";
+  g.fillStyle = "#fff4e8"; g.font = "800 80px 'Unbounded', sans-serif";
   wrap(g, `${win.name} câștigă`, W / 2, 300, W - 160, 96);
-  g.fillStyle = "#d9b45a"; g.font = "180px 'Marcellus SC', Georgia, serif";
+  g.fillStyle = "#ff3d8b"; g.font = "800 170px 'Unbounded', sans-serif";
   g.fillText(r.score, W / 2, 520);
 
   drawHex(g, A, 290, 860, 210);
   drawHex(g, B, 790, 860, 210);
-  g.font = "600 52px 'Alegreya Sans', sans-serif";
+  g.font = "600 52px 'Manrope', sans-serif";
   g.fillStyle = EL_HEX[A.profile.el]; g.fillText(A.name, 290, 1140);
   g.fillStyle = EL_HEX[B.profile.el]; g.fillText(B.name, 790, 1140);
-  g.font = "34px 'Alegreya Sans', sans-serif"; g.fillStyle = "#a9a3c4";
+  g.font = "34px 'Manrope', sans-serif"; g.fillStyle = "#cbb8e6";
   g.fillText(`${A.profile.klass} · ${A.profile.sign.name}`, 290, 1190);
   g.fillText(`${B.profile.klass} · ${B.profile.sign.name}`, 790, 1190);
 
   // Rezultatul pe fiecare întrebare
   let y = 1300;
-  g.textAlign = "left"; g.font = "36px 'Alegreya Sans', sans-serif";
+  g.textAlign = "left"; g.font = "36px 'Manrope', sans-serif";
   for (const rr of r.rounds) {
     const label = TRAITS.find(([k]) => k === rr.trait)![1];
-    g.fillStyle = "#a9a3c4"; g.fillText(label, 140, y);
+    g.fillStyle = "#cbb8e6"; g.fillText(label, 140, y);
     g.textAlign = "right"; g.fillStyle = rr.win === "A" ? EL_HEX[A.profile.el] : EL_HEX[B.profile.el];
     g.fillText(rr.win === "A" ? A.name : B.name, W - 140, y);
     g.textAlign = "left"; y += 56;
   }
   g.textAlign = "center";
-  g.fillStyle = "#ff9b9b"; g.font = "38px 'Alegreya Sans', sans-serif";
+  g.fillStyle = "#ff7aa8"; g.font = "38px 'Manrope', sans-serif";
   wrap(g, `${lose.name} poartă 7 zile titlul „${r.shame}”`, W / 2, 1690, W - 180, 48);
-  g.fillStyle = "#d9b45a"; g.font = "36px 'JetBrains Mono', monospace";
+  g.fillStyle = "#2de1c2"; g.font = "700 36px 'Manrope', sans-serif";
   g.fillText(`${location.host}/d/${d.code}`, W / 2, 1810);
 
   return new Promise((res, rej) => cv.toBlob((b) => (b ? res(b) : rej(new Error("Imaginea nu a putut fi creată."))), "image/png"));
@@ -63,7 +63,7 @@ function drawHex(g: CanvasRenderingContext2D, p: PlayerView, cx: number, cy: num
   for (const r of [50, 100]) { path(Array(6).fill(r)); g.stroke(); }
   const col = EL_HEX[p.profile.el];
   path(TRAITS.map(([k]) => p.profile.stars[k]));
-  g.setLineDash([10, 10]); g.strokeStyle = "rgba(217,180,90,0.8)"; g.lineWidth = 3; g.stroke(); g.setLineDash([]);
+  g.setLineDash([4, 12]); g.strokeStyle = "rgba(255,244,232,0.8)"; g.lineWidth = 3; g.stroke(); g.setLineDash([]);
   path(TRAITS.map(([k]) => p.profile.score[k]));
   g.fillStyle = col + "55"; g.fill(); g.strokeStyle = col; g.lineWidth = 5; g.stroke();
 }
